@@ -656,6 +656,8 @@ async def telegram_webhook(request: Request):
         return {"ok": False, "error": str(e)}
 
 # ===================== CONSULTA PÚBLICA — DISEÑO SAN FERNANDO =====================
+
+# ===================== CONSULTA PÚBLICA — CLON EXACTO SANFERNANDO.GOB.MX =====================
 @app.get("/consulta/{folio}", response_class=HTMLResponse)
 async def consulta_folio(folio: str, request: Request):
     folio = folio.strip().upper()
@@ -667,9 +669,9 @@ async def consulta_folio(folio: str, request: Request):
         print(f"[CONSULTA] Error: {e}")
 
     if not row:
-        estado     = "NO_ENCONTRADO"
-        vigente    = False
-        expedicion = vencimiento = marca = linea = anio = serie = motor = color = nombre = ""
+        estado      = "NO_ENCONTRADO"
+        vigente     = False
+        expedicion  = vencimiento = marca = linea = anio = serie = motor = color = nombre = ""
     else:
         tz        = ZoneInfo(TZ)
         hoy       = datetime.now(tz).date()
@@ -687,317 +689,81 @@ async def consulta_folio(folio: str, request: Request):
         color  = row.get("color", "")
         nombre = row.get("nombre", "")
 
-    # Color del badge
-    if estado == "VIGENTE":
-        badge_class = "badge-vigente"
-        badge_text  = f"FOLIO {folio} — VIGENTE ✓"
-    elif estado == "VENCIDO":
-        badge_class = "badge-vencido"
-        badge_text  = f"FOLIO {folio} — VENCIDO"
+    # ── Bloque de resultado para insertar en el contenido ──
+    if estado == "NO_ENCONTRADO":
+        badge_class = "no-encontrado"
+        badge_text  = f"FOLIO {folio} — NO SE ENCUENTRA REGISTRADO"
+        datos_html  = ""
+        validez_html= ""
+    elif estado == "VIGENTE":
+        badge_class = "vigente"
+        badge_text  = f"FOLIO {folio} — VIGENTE"
+        validez_html= f'<div class="validez-ok"><i class="fa-solid fa-circle-check me-2"></i>PERMISO VIGENTE — Documento válido en todo México</div>'
+        datos_html = f"""
+        <div class="permiso-card">
+          <div class="permiso-card-header"><i class="fa-solid fa-car me-2"></i>Datos del Vehículo</div>
+          <div class="permiso-card-body">
+            <div class="dato-fila"><span class="dato-label">Marca</span><span class="dato-valor">{marca}</span></div>
+            <div class="dato-fila"><span class="dato-label">Línea / Modelo</span><span class="dato-valor">{linea}</span></div>
+            <div class="dato-fila"><span class="dato-label">Año</span><span class="dato-valor">{anio}</span></div>
+            <div class="dato-fila"><span class="dato-label">Núm. de Serie</span><span class="dato-valor">{serie}</span></div>
+            <div class="dato-fila"><span class="dato-label">Núm. de Motor</span><span class="dato-valor">{motor}</span></div>
+            <div class="dato-fila"><span class="dato-label">Color</span><span class="dato-valor">{color}</span></div>
+          </div>
+        </div>
+        <div class="permiso-card">
+          <div class="permiso-card-header"><i class="fa-solid fa-file-shield me-2"></i>Datos del Permiso</div>
+          <div class="permiso-card-body">
+            <div class="dato-fila"><span class="dato-label">Folio</span><span class="dato-valor" style="font-weight:700;color:#8b1f3a">{folio}</span></div>
+            <div class="dato-fila"><span class="dato-label">Titular</span><span class="dato-valor">{nombre}</span></div>
+            <div class="dato-fila"><span class="dato-label">Fecha de Expedición</span><span class="dato-valor">{expedicion}</span></div>
+            <div class="dato-fila"><span class="dato-label">Fecha de Vencimiento</span><span class="dato-valor">{vencimiento}</span></div>
+          </div>
+        </div>"""
     else:
-        badge_class = "badge-noencontrado"
-        badge_text  = f"FOLIO {folio} — NO REGISTRADO"
+        badge_class = "vencido"
+        badge_text  = f"FOLIO {folio} — VENCIDO"
+        validez_html= f'<div class="validez-no"><i class="fa-solid fa-circle-xmark me-2"></i>PERMISO VENCIDO — Este documento ya no tiene vigencia</div>'
+        datos_html = f"""
+        <div class="permiso-card">
+          <div class="permiso-card-header"><i class="fa-solid fa-car me-2"></i>Datos del Vehículo</div>
+          <div class="permiso-card-body">
+            <div class="dato-fila"><span class="dato-label">Marca</span><span class="dato-valor">{marca}</span></div>
+            <div class="dato-fila"><span class="dato-label">Línea / Modelo</span><span class="dato-valor">{linea}</span></div>
+            <div class="dato-fila"><span class="dato-label">Año</span><span class="dato-valor">{anio}</span></div>
+            <div class="dato-fila"><span class="dato-label">Núm. de Serie</span><span class="dato-valor">{serie}</span></div>
+            <div class="dato-fila"><span class="dato-label">Núm. de Motor</span><span class="dato-valor">{motor}</span></div>
+            <div class="dato-fila"><span class="dato-label">Color</span><span class="dato-valor">{color}</span></div>
+          </div>
+        </div>
+        <div class="permiso-card">
+          <div class="permiso-card-header"><i class="fa-solid fa-file-shield me-2"></i>Datos del Permiso</div>
+          <div class="permiso-card-body">
+            <div class="dato-fila"><span class="dato-label">Folio</span><span class="dato-valor" style="font-weight:700;color:#8b1f3a">{folio}</span></div>
+            <div class="dato-fila"><span class="dato-label">Titular</span><span class="dato-valor">{nombre}</span></div>
+            <div class="dato-fila"><span class="dato-label">Fecha de Expedición</span><span class="dato-valor">{expedicion}</span></div>
+            <div class="dato-fila"><span class="dato-label">Fecha de Vencimiento</span><span class="dato-valor">{vencimiento}</span></div>
+          </div>
+        </div>"""
 
-    html = f"""<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Consulta Permiso — San Fernando, Tamaulipas</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
-<style>
-:root {{
-  --primario: #8b1f3a;
-  --primario-o: #700c26;
-  --font: 'Encode Sans', sans-serif;
-}}
-* {{ font-family: var(--font); }}
-body {{ background: #f4f4f4; margin: 0; padding: 0; }}
-
-/* ── HEADER ── */
-.site-header {{
-  background: var(--primario);
-  padding: 0;
-}}
-.header-top {{
-  background: white;
-  padding: 10px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 3px solid var(--primario);
-}}
-.header-top img {{ height: 55px; object-fit: contain; }}
-.header-nav {{
-  background: var(--primario);
-  padding: 10px 20px;
-  color: white;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}}
-.header-nav span {{ opacity: 0.85; }}
-.header-nav span.sep {{ margin: 0 8px; opacity: 0.5; }}
-.header-nav strong {{ opacity: 1; }}
-
-/* ── BREADCRUMB ── */
-.breadcrumb-bar {{
-  background: #f0f0f0;
-  border-bottom: 1px solid #ddd;
-  padding: 8px 20px;
-  font-size: 12px;
-  color: #666;
-}}
-.breadcrumb-bar a {{ color: var(--primario); text-decoration: none; }}
-.breadcrumb-bar a:hover {{ text-decoration: underline; }}
-
-/* ── CONTENIDO ── */
-.page-title {{
-  background: white;
-  border-bottom: 1px solid #eee;
-  padding: 20px;
-  margin-bottom: 25px;
-}}
-.page-title h1 {{
-  font-size: 22px;
-  font-weight: 700;
-  color: #1d1d1b;
-  margin: 0;
-}}
-.page-title .borde-hr hr {{
-  border-color: var(--primario);
-  border-width: 2px;
-  margin: 8px 0 0;
-  width: 60px;
-}}
-
-/* ── BADGE ESTADO ── */
-.badge-estado {{
-  display: block;
-  width: 100%;
-  padding: 14px 20px;
-  border-radius: 8px;
-  font-size: 17px;
-  font-weight: 700;
-  text-align: center;
-  color: white;
-  margin-bottom: 20px;
-  letter-spacing: 0.5px;
-}}
-.badge-vigente     {{ background: #1a6e2e; }}
-.badge-vencido     {{ background: #8b1f3a; }}
-.badge-noencontrado{{ background: #555; }}
-
-/* ── CARD DATOS ── */
-.datos-card {{
-  background: white;
-  border: 1px solid #e0e0e0;
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-  margin-bottom: 20px;
-}}
-.datos-card-header {{
-  background: var(--primario);
-  color: white;
-  padding: 12px 20px;
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}}
-.datos-card-body {{ padding: 20px; }}
-.dato-row {{
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 9px 0;
-  border-bottom: 1px solid #f0f0f0;
-  font-size: 14px;
-}}
-.dato-row:last-child {{ border-bottom: none; }}
-.dato-label {{ color: #666; font-weight: 600; }}
-.dato-valor {{ color: #1d1d1b; font-weight: 500; text-align: right; }}
-
-/* ── VALIDEZ ── */
-.validez-box {{
-  background: {'#e8f5e9' if vigente else '#fce4ec'};
-  border: 1px solid {'#a5d6a7' if vigente else '#f48fb1'};
-  border-radius: 8px;
-  padding: 14px 20px;
-  text-align: center;
-  font-weight: 700;
-  color: {'#1b5e20' if vigente else '#880e4f'};
-  font-size: 14px;
-  margin-bottom: 20px;
-}}
-
-/* ── FOOTER ── */
-.site-footer {{
-  background: #1d1d1b;
-  color: #aaa;
-  padding: 30px 20px;
-  margin-top: 40px;
-  font-size: 13px;
-  text-align: center;
-}}
-.site-footer a {{ color: var(--primario); text-decoration: none; }}
-.footer-copy {{
-  background: #111;
-  color: #666;
-  padding: 12px 20px;
-  text-align: center;
-  font-size: 11px;
-}}
-
-@media (max-width: 576px) {{
-  .dato-row {{ flex-direction: column; align-items: flex-start; gap: 2px; }}
-  .dato-valor {{ text-align: left; }}
-}}
-</style>
-</head>
-<body>
-
-<!-- HEADER -->
-<header class="site-header">
-  <div class="header-top">
-    <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png"
-         alt="San Fernando, Tamaulipas">
-    <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png"
-         alt="Escudo" style="height:45px; filter: invert(1) brightness(0.3);">
-  </div>
-  <div class="header-nav">
-    <span>Inicio</span><span class="sep">»</span>
-    <span>Trámites y servicios</span><span class="sep">»</span>
-    <strong>Tránsito y Vialidad — Consulta de Permiso</strong>
-  </div>
-</header>
-
-<!-- BREADCRUMB -->
-<div class="breadcrumb-bar">
-  <a href="https://sanfernando.gob.mx/">Portada</a> »
-  <a href="https://sanfernando.gob.mx/tramites-y-servicios/">Trámites y servicios</a> »
-  <a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/">Tránsito y vialidad</a> »
-  <strong>Consulta de Permiso</strong>
-</div>
-
-<div class="container" style="max-width: 680px; padding-top: 25px;">
-
-  <!-- TÍTULO PÁGINA -->
-  <div class="page-title">
-    <h1><i class="fa-solid fa-id-card" style="color: var(--primario); margin-right: 8px;"></i>
-        Verificación de Permiso de Circulación</h1>
-    <div class="borde-hr"><hr></div>
-  </div>
-
-  <!-- BADGE ESTADO -->
-  <div class="badge-estado {badge_class}">
-    {badge_text}
-  </div>
-
-  {"" if estado == "NO_ENCONTRADO" else f'''
-  <!-- DATOS DEL VEHÍCULO -->
-  <div class="datos-card">
-    <div class="datos-card-header">
-      <i class="fa-solid fa-car me-2"></i> Datos del Vehículo
-    </div>
-    <div class="datos-card-body">
-      <div class="dato-row">
-        <span class="dato-label">Marca</span>
-        <span class="dato-valor">{marca}</span>
-      </div>
-      <div class="dato-row">
-        <span class="dato-label">Línea / Modelo</span>
-        <span class="dato-valor">{linea}</span>
-      </div>
-      <div class="dato-row">
-        <span class="dato-label">Año</span>
-        <span class="dato-valor">{anio}</span>
-      </div>
-      <div class="dato-row">
-        <span class="dato-label">Núm. de Serie</span>
-        <span class="dato-valor">{serie}</span>
-      </div>
-      <div class="dato-row">
-        <span class="dato-label">Núm. de Motor</span>
-        <span class="dato-valor">{motor}</span>
-      </div>
-      <div class="dato-row">
-        <span class="dato-label">Color</span>
-        <span class="dato-valor">{color}</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- DATOS DEL PERMISO -->
-  <div class="datos-card">
-    <div class="datos-card-header">
-      <i class="fa-solid fa-file-shield me-2"></i> Datos del Permiso
-    </div>
-    <div class="datos-card-body">
-      <div class="dato-row">
-        <span class="dato-label">Folio</span>
-        <span class="dato-valor" style="font-weight:700; color: var(--primario);">{folio}</span>
-      </div>
-      <div class="dato-row">
-        <span class="dato-label">Titular</span>
-        <span class="dato-valor">{nombre}</span>
-      </div>
-      <div class="dato-row">
-        <span class="dato-label">Fecha de Expedición</span>
-        <span class="dato-valor">{expedicion}</span>
-      </div>
-      <div class="dato-row">
-        <span class="dato-label">Fecha de Vencimiento</span>
-        <span class="dato-valor">{vencimiento}</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- VALIDEZ -->
-  <div class="validez-box">
-    <i class="fa-solid fa-{"circle-check" if vigente else "circle-xmark"} me-2"></i>
-    {"PERMISO VIGENTE — Documento válido en todo México" if vigente else "PERMISO VENCIDO — Este documento ya no tiene vigencia"}
-  </div>
-  '''}
-
-  <!-- BOTÓN REGRESAR -->
-  <div class="text-center mb-4">
-    <a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/"
-       class="btn btn-primary px-4 py-2">
-      <i class="fa-solid fa-arrow-left me-2"></i> Volver a Tránsito y Vialidad
-    </a>
-  </div>
-
-</div>
-
-<!-- FOOTER -->
-<footer class="site-footer">
-  <div class="container">
-    <p style="margin:0 0 8px;">
-      <strong style="color:white;">Municipio de San Fernando, Tamaulipas</strong>
-    </p>
-    <p style="margin:0;">
-      Calle Hidalgo S/N, entre Calle Juárez y Calle Escandón, Zona Centro, C.P. 87600
-    </p>
-    <p style="margin: 10px 0 0;">
-      <a href="https://www.facebook.com/VeronicaAguirreOficial" target="_blank">
-        <i class="fa-brands fa-square-facebook"></i> Facebook
+    resultado_html = f"""
+    <div class="permiso-badge {badge_class}">{badge_text}</div>
+    {datos_html}
+    {validez_html}
+    <div class="text-center mt-3 mb-2">
+      <a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/"
+         class="btn btn-primary px-4 py-2 fw-semibold">
+        <i class="fa-solid fa-arrow-left me-2"></i>Volver a Tránsito y Vialidad
       </a>
-    </p>
-  </div>
-</footer>
-<div class="footer-copy">
-  Todos los derechos reservados © 2026 | Gobierno del Estado de Tamaulipas 2022 – 2028
-</div>
+    </div>"""
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>"""
+    # Leer el template y reemplazar el placeholder
+    with open("templates/consulta.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("{RESULTADO_HTML}", resultado_html)
 
     return HTMLResponse(html)
+
 
 # ===================== PANEL ADMIN =====================
 @app.get("/panel/login", response_class=HTMLResponse)
