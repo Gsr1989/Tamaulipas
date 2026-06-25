@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tránsito y vialidad - Municipio de San Fernando, Tamaulipas</title>
+
+<!-- === RECURSOS DIRECTOS DE SANFERNANDO.GOB.MX === -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@100;200;300;400;500;600;700;800;900&family=Open+Sans:wght@300&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;500;600;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400..900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css"/>
+<link rel="stylesheet" href="https://sanfernando.gob.mx/wp-content/themes/municipios-tamaulipas/assets/css/estilos.css" type="text/css">
+
+<link rel="icon" href="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/cropped-logo-secundario-vertical-32x32.png" sizes="32x32"/>
+<link rel="icon" href="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/cropped-logo-secundario-vertical-192x192.png" sizes="192x192"/>
+
+<style>
+:root {
+    --primario: #8b1f3a !important;
+    --secundario: #6e6e6e !important;
+    --primario-o: #700c26 !important;
+    --primario-a: #8b1f3a1A !important;
+    --negro: #1D1D1B !important;
+    --body: #54565B !important;
+    --font: 'Encode Sans', sans-serif;
+    --font-open: 'Open Sans', sans-serif;
+}
+.btn-primary {
+    --bs-btn-bg: #8b1f3a !important;
+    --bs-btn-border-color: #8b1f3a !important;
+    --bs-btn-hover-bg: #700c26 !important;
+    --bs-btn-hover-border-color: #700c26 !important;
+    --bs-btn-active-bg: #700c26 !important;
+    --bs-btn-color: #fff;
+    --bs-btn-hover-color: #fff;
+}
+
+/* ── RESULTADO PERMISO ── */
+.permiso-badge {
+    display: block;
+    width: 100%;
+    padding: 14px 18px;
+    border-radius: 8px;
+    font-size: 17px;
+    font-weight: 700;
+    text-align: center;
+    color: white;
+    margin-bottom: 20px;
+}
+.permiso-badge.vigente     { background: #1a6e2e; }
+.permiso-badge.vencido     { background: #8b1f3a; }
+.permiso-badge.no-encontrado { background: #555; }
+
+.permiso-card {
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+}
+.permiso-card-header {
+    background: #8b1f3a;
+    color: white;
+    padding: 10px 18px;
+    font-weight: 700;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+.permiso-card-body { padding: 16px 18px; background: white; }
+.dato-fila {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+}
+.dato-fila:last-child { border-bottom: none; }
+.dato-label { color: #666; font-weight: 600; }
+.dato-valor { color: #1d1d1b; font-weight: 500; text-align: right; }
+
+.validez-ok  { background:#e8f5e9; border:1px solid #a5d6a7; color:#1b5e20; border-radius:8px; padding:12px 16px; text-align:center; font-weight:700; font-size:14px; margin-bottom:16px; }
+.validez-no  { background:#fce4ec; border:1px solid #f48fb1; color:#880e4f; border-radius:8px; padding:12px 16px; text-align:center; font-weight:700; font-size:14px; margin-bottom:16px; }
+
+@media (max-width:576px) {
+    .dato-fila { flex-direction:column; align-items:flex-start; gap:2px; }
+    .dato-valor { text-align:left; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════
+     HEADER EXACTO DE SANFERNANDO.GOB.MX
+═══════════════════════════════════════════════ -->
+<header id="header" class="w-100 header">
+  <div id="contenido-fix">
+
+    <div id="logo-buscador">
+      <div class="container-lg">
+        <div class="row">
+          <div class="col-8 col-sm-6 col-md-6 col-lg-6 col-xl-6 logo-home d-flex align-items-center">
+            <a href="https://sanfernando.gob.mx">
+              <picture class="img-fluid logo">
+                <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png.webp"/>
+                <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png" alt="San Fernando" class="img-fluid logo"/>
+              </picture>
+            </a>
+          </div>
+          <div class="col-4 col-sm-6 col-md-6 col-lg-6 col-xl-6 logo-home d-flex align-items-center justify-content-end">
+            <div class="buscador-header w-100 d-none d-sm-none d-md-none d-lg-block">
+              <form class="form-buscador form-group" method="get" action="https://sanfernando.gob.mx">
+                <input type="hidden" name="buscar" value="pages">
+                <input class="form-control input-lg" name="s" placeholder="Buscar..." autocomplete="off">
+              </form>
+            </div>
+            <div id="barras-boton" class="col-6 col-sm-6 col-md-7 d-block d-sm-block d-md-block d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#nav-right" aria-controls="nav-right">
+              <form class="menu-btn-container m-0 h-100 d-flex justify-content-end">
+                <label for="menu-open" id="menu-btn" class="btn-movil m-0">
+                  <div class="menu-bars"><span></span><span></span><span></span></div>
+                </label>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Menú escritorio -->
+    <div class="d-none d-sm-none d-md-none d-lg-block menus">
+      <div id="menu-principal">
+        <div class="container-lg container-xl">
+          <div class="row" id="row-cabecera">
+            <div class="col logo-t-search pe-0">
+              <a class="d-flex justify-content-center align-items-center h-100" href="https://sanfernando.gob.mx">
+                <picture class="img-fluid">
+                  <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png.webp"/>
+                  <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png" alt="San Fernando" class="img-fluid"/>
+                </picture>
+              </a>
+            </div>
+            <div class="menu-container menu-escritorio col-md-11 col-lg-11 col-xl-11">
+              <ul id="menu-menu-principal" class="menu clean-list menu-principal">
+                <li><a href="https://sanfernando.gob.mx/">Inicio</a></li>
+                <li class="menu-item-has-children"><a href="https://sanfernando.gob.mx/gobierno/">Gobierno</a>
+                  <ul class="sub-menu">
+                    <li><a href="https://sanfernando.gob.mx/gobierno/cabildo/">Cabildo</a></li>
+                    <li><a href="https://sanfernando.gob.mx/gobierno/gabinete/">Gabinete</a></li>
+                    <li><a href="https://sanfernando.gob.mx/gobierno/organigrama/">Organigrama</a></li>
+                    <li><a href="https://sanfernando.gob.mx/gobierno/dependencias-e-institutos/">Dependencias e institutos</a></li>
+                    <li><a href="https://sanfernando.gob.mx/gobierno/plan-municipal-de-desarrollo/">Plan municipal de desarrollo</a></li>
+                    <li><a href="https://sanfernando.gob.mx/gobierno/informes-de-gobierno/">Informes de Gobierno</a></li>
+                  </ul>
+                </li>
+                <li class="menu-item-has-children"><a href="https://sanfernando.gob.mx/ciudad/">Ciudad</a>
+                  <ul class="sub-menu">
+                    <li><a href="https://sanfernando.gob.mx/ciudad/historia/">Historia</a></li>
+                    <li><a href="https://sanfernando.gob.mx/ciudad/recursos-naturales/">Recursos Naturales</a></li>
+                  </ul>
+                </li>
+                <li><a href="https://sanfernando.gob.mx/turismo/">Turismo</a></li>
+                <li class="current-menu-parent menu-item-has-children"><a href="https://sanfernando.gob.mx/tramites-y-servicios/">Trámites y servicios</a>
+                  <ul class="sub-menu">
+                    <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/secretaria-del-ayuntamiento/">Secretaría del ayuntamiento</a></li>
+                    <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/secretaria-de-finanzas/">Secretaría de finanzas</a></li>
+                    <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/obras-publicas/">Obras públicas</a></li>
+                    <li class="current-menu-item"><a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/" aria-current="page">Tránsito y vialidad</a></li>
+                    <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/direccion-de-catastro/">Dirección de catastro</a></li>
+                    <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/departamento-de-cartillas/">Departamento de cartillas</a></li>
+                    <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/alcoholes/">Alcoholes</a></li>
+                    <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/tenencia-de-la-tierra/">Tenencia de la tierra</a></li>
+                  </ul>
+                </li>
+                <li class="menu-item-has-children"><a href="https://sanfernando.gob.mx/transparencia/">Transparencia</a>
+                  <ul class="sub-menu">
+                    <li><a href="https://sanfernando.gob.mx/transparencia/transparencia-municipal/">Transparencia Municipal</a></li>
+                    <li><a href="https://sanfernando.gob.mx/transparencia/transparencia-comapa/">Transparencia COMAPA</a></li>
+                    <li><a href="https://sanfernando.gob.mx/transparencia/transparencia-dif/">Transparencia DIF</a></li>
+                  </ul>
+                </li>
+                <li><a href="https://sanfernando.gob.mx/contacto/">Contacto</a></li>
+              </ul>
+            </div>
+            <div class="col logo-t-search ps-0">
+              <div class="accordion d-flex justify-content-end align-items-center h-100">
+                <button class="border-0 text-white bg-transparent" type="button" data-bs-toggle="collapse" data-bs-target="#hd-buscador">
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="menu-secundario">
+        <div class="container-lg container-xl">
+          <div class="row" id="row-cabecera-redes">
+            <div class="menu-container menu-escritorio col-md-10 col-lg-10 col-xl-8">
+              <ul id="menu-menu-secundario" class="menu clean-list menu-principal">
+                <li><a href="https://www.tamaulipas.gob.mx/">Gobierno de Tamaulipas</a></li>
+                <li class="menu-item-has-children"><a href="#">Servicios en línea</a>
+                  <ul class="sub-menu">
+                    <li><a href="https://www.gob.mx/ActaNacimiento/folioSeguimiento/">Consulta de acta de nacimiento</a></li>
+                    <li><a href="https://www.gob.mx/curp/">Consulta de CURP</a></li>
+                    <li><a href="https://www.gob.mx/pasaporte/">Pasaporte</a></li>
+                    <li><a href="https://finanzas.tamaulipas.gob.mx/pago-de-contribuciones/tenencia.php">Pago de tenencia vehicular</a></li>
+                  </ul>
+                </li>
+              </ul>
+            </div>
+            <div class="redes-sociales menu-escritorio col-md-2 col-lg-2 col-xl-4 d-none d-sm-none d-md-none d-lg-block">
+              <ul class="clean-list d-flex justify-content-end align-items-center" id="redes-sociales">
+                <li><a href="https://www.facebook.com/VeronicaAguirreOficial" target="_blank"><i class="fa-brands fa-square-facebook"></i></a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Buscador colapsable -->
+    <div id="hd-buscador" class="accordion-collapse collapse shadow">
+      <div class="container">
+        <div class="row"><div class="col-12">
+          <form class="form-buscador form-group" method="get" action="https://sanfernando.gob.mx">
+            <input type="hidden" name="buscar" value="pages">
+            <input class="form-control input-lg border-0" name="s" placeholder="Buscar..." autocomplete="off">
+          </form>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- Menú responsivo -->
+    <div class="menu-responsivo">
+      <div class="container-lg"><div class="row">
+        <div class="offcanvas offcanvas-end w-100 d-lg-none" tabindex="-1" id="nav-right">
+          <div class="offcanvas-header">
+            <a href="https://sanfernando.gob.mx/" class="d-block relative">
+              <picture class="logo">
+                <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png.webp"/>
+                <img class="logo" src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png" alt="San Fernando"/>
+              </picture>
+            </a>
+            <button type="button" class="btn-close btn-close-white btn-lg" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+          </div>
+          <div class="offcanvas-body">
+            <div id="row-menu-movil">
+              <div class="hidden-md hidden-lg">
+                <div class="buscador-header w-100 mb-3">
+                  <form class="form-buscador form-group" method="get" action="https://sanfernando.gob.mx">
+                    <input type="hidden" name="buscar" value="pages">
+                    <input class="form-control input-lg" name="s" placeholder="Buscar..." autocomplete="off">
+                  </form>
+                </div>
+                <ul class="menu clean-list menu-principal">
+                  <li><a href="https://sanfernando.gob.mx/">Inicio</a></li>
+                  <li><a href="https://sanfernando.gob.mx/gobierno/">Gobierno</a></li>
+                  <li><a href="https://sanfernando.gob.mx/ciudad/">Ciudad</a></li>
+                  <li><a href="https://sanfernando.gob.mx/turismo/">Turismo</a></li>
+                  <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/">Trámites y servicios</a></li>
+                  <li><a href="https://sanfernando.gob.mx/transparencia/">Transparencia</a></li>
+                  <li><a href="https://sanfernando.gob.mx/contacto/">Contacto</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+          <div class="offcanvas-footer">
+            <div class="row m-3">
+              <span class="d-inline-block d-flex justify-content-center siguenos">Síguenos en Redes Sociales:</span>
+              <ul class="clean-list d-flex justify-content-center align-items-center" id="redes-sociales">
+                <li><a href="https://www.facebook.com/VeronicaAguirreOficial" target="_blank"><i class="fa-brands fa-square-facebook"></i></a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+  </div>
+</header>
+
+<!-- BREADCRUMB -->
+<div id="breadcrumbs">
+  <div class="container-lg"><div class="row"><div class="col-lg-12">
+    <div class="breadcrumbs">
+      <span>
+        <span><a href="https://sanfernando.gob.mx/">Portada</a></span> »
+        <span><a href="https://sanfernando.gob.mx/tramites-y-servicios/">Trámites y servicios</a></span> »
+        <span class="breadcrumb_last" aria-current="page">Tránsito y vialidad</span>
+      </span>
+    </div>
+  </div></div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     CONTENIDO PRINCIPAL
+═══════════════════════════════════════════════ -->
+<div id="contenido-principal" class="sidebar seccion page">
+  <div class="container-lg">
+    <section class="row">
+
+      <!-- ARTÍCULO PRINCIPAL -->
+      <article class="col-lg-8 article-content">
+
+        <div class="row-titulo">
+          <h1 class="titulo-row">Tránsito y vialidad</h1>
+          <div class="borde-hr"><hr></div>
+        </div>
+
+        <div class="entry">
+
+          <!-- RESULTADO DEL PERMISO -->
+          <div id="resultado-permiso">
+
+            {RESULTADO_HTML}
+
+          </div>
+
+          <!-- ACORDEÓN ORIGINAL DE LA PÁGINA -->
+          <div class="accordion mt-4" id="accordion-tramites">
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="heading-1">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-1" aria-expanded="false">
+                  Requisitos para examen de manejo
+                </button>
+              </h2>
+              <div id="collapse-1" class="accordion-collapse collapse" aria-labelledby="heading-1" data-bs-parent="#accordion-tramites">
+                <div class="accordion-body">
+                  <ul>
+                    <li>Recibo de pago de derecho (realizarlo en la Secretaría de Finanzas de Presidencia Municipal)</li>
+                    <li>1 copia de credencial de elector</li>
+                    <li>1 copia de Acta de Nacimiento o CURP</li>
+                    <li>1 copia de Comprobante de Domicilio</li>
+                    <li>Costo 1.5 UMAS (Valor UMA=$117.31 vigencia del 1 de febrero del 2026 al 31 de enero del 2027)</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="heading-2">
+                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-2" aria-expanded="false">
+                  Requisitos para carta de desuso vehicular
+                </button>
+              </h2>
+              <div id="collapse-2" class="accordion-collapse collapse" aria-labelledby="heading-2" data-bs-parent="#accordion-tramites">
+                <div class="accordion-body">
+                  <ul>
+                    <li>1 copia de credencial de elector o identificación con fotografía vigente</li>
+                    <li>1 copia de factura del vehículo o de la última tarjeta de circulación</li>
+                    <li>1 copia del comprobante de domicilio expedido a no más de tres meses</li>
+                    <li>4 fotografías del vehículo</li>
+                    <li>Pago de derechos</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </article>
+
+      <!-- SIDEBAR EXACTO -->
+      <aside class="col-lg-4 aside-sidebar">
+        <div class="widget js-sticky-widget">
+
+          <div class="row-titulo">
+            <h3 class="titulo-row">Temas de interés</h3>
+            <div class="borde-hr"><hr></div>
+          </div>
+
+          <div class="swiper" id="sidebar-temas-interes">
+            <div class="swiper-wrapper">
+              <div class="swiper-slide">
+                <div class="item-tema">
+                  <a href="https://sanfernando.gob.mx/transparencia/transparencia-municipal-2024-2027/" target="_self">
+                    <picture class="img-fluid">
+                      <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/Transparencia_1x1-850x500.png.webp"/>
+                      <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/Transparencia_1x1-850x500.png" alt="Transparencia Municipal" class="img-fluid"/>
+                    </picture>
+                  </a>
+                  <a href="https://sanfernando.gob.mx/transparencia/transparencia-municipal-2024-2027/" target="_self">
+                    <h4 class="text-center">Transparencia Municipal (2024 – 2027)</h4>
+                  </a>
+                </div>
+              </div>
+              <div class="swiper-slide">
+                <div class="item-tema">
+                  <a href="https://sanfernando.gob.mx/tramites-y-servicios/" target="_self">
+                    <picture class="img-fluid">
+                      <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/Trámites-y-Servicios_1x1-850x500.png.webp"/>
+                      <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/Trámites-y-Servicios_1x1-850x500.png" alt="Trámites y servicios" class="img-fluid"/>
+                    </picture>
+                  </a>
+                  <a href="https://sanfernando.gob.mx/tramites-y-servicios/" target="_self">
+                    <h4 class="text-center">Trámites y servicios</h4>
+                  </a>
+                </div>
+              </div>
+              <div class="swiper-slide">
+                <div class="item-tema">
+                  <a href="https://sanfernando.gob.mx/gobierno/organigrama/" target="_self">
+                    <picture class="img-fluid">
+                      <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/Organigrama_1x1-850x500.png.webp"/>
+                      <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/Organigrama_1x1-850x500.png" alt="Organigrama" class="img-fluid"/>
+                    </picture>
+                  </a>
+                  <a href="https://sanfernando.gob.mx/gobierno/organigrama/" target="_self">
+                    <h4 class="text-center">Organigrama</h4>
+                  </a>
+                </div>
+              </div>
+            </div>
+            <div class="swiper-pagination"></div>
+          </div>
+
+          <div class="row-titulo mt-4">
+            <h3 class="titulo-row">Boletines de Prensa</h3>
+            <div class="borde-hr"><hr></div>
+          </div>
+
+          <div id="sidebar-boletin-prensa">
+            <div class="item-boletin">
+              <div class="card">
+                <a href="https://sanfernando.gob.mx/2026/05/beca-rita-cetina/">
+                  <img width="150" height="86" src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/05/3.jpg" class="img-boletin wp-post-image" alt="Beca Rita Cetina" loading="lazy"/>
+                </a>
+                <div class="card-body p-0">
+                  <h5 class="card-date">18 de mayo de 2026</h5>
+                  <a href="https://sanfernando.gob.mx/2026/05/beca-rita-cetina/"><h4 class="card-title">Beca Rita Cetina</h4></a>
+                </div>
+              </div>
+            </div>
+            <a class="btn btn-md w-100 text-white bg-primario fw-light mt-2" href="https://sanfernando.gob.mx/prensa">Ir a la Sala de Prensa</a>
+          </div>
+
+        </div>
+      </aside>
+
+    </section>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     FOOTER EXACTO DE SANFERNANDO.GOB.MX
+═══════════════════════════════════════════════ -->
+<footer id="footer">
+  <div class="container-lg" id="content-footer">
+    <div class="row">
+
+      <div class="col-lg-6">
+        <div class="row-titulo">
+          <h2 class="titulo-row">San Fernando</h2>
+          <div class="borde-hr"></div>
+        </div>
+        <div class="row">
+          <div class="col informacion-logo d-flex">
+            <picture class="logo">
+              <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png.webp"/>
+              <img class="logo" src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png" alt="San Fernando"/>
+            </picture>
+            <div class="px-5">
+              <p>Calle Hidalgo Sin Número, entre Calle Juárez y Calle Escandón, Zona Centro, C.P 87600.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-3 col-6">
+        <div class="row-titulo">
+          <h2 class="titulo-row">Más información</h2>
+          <div class="borde-hr"></div>
+        </div>
+        <ul class="informacion-links clean-list">
+          <li><a href="https://sanfernando.gob.mx/">Inicio</a></li>
+          <li><a href="https://sanfernando.gob.mx/gobierno/">Gobierno</a></li>
+          <li><a href="https://sanfernando.gob.mx/ciudad/">Ciudad</a></li>
+          <li><a href="https://sanfernando.gob.mx/turismo/">Turismo</a></li>
+          <li><a href="https://sanfernando.gob.mx/tramites-y-servicios/">Trámites y servicios</a></li>
+          <li><a href="https://sanfernando.gob.mx/transparencia/">Transparencia</a></li>
+          <li><a href="https://sanfernando.gob.mx/contacto/">Contacto</a></li>
+        </ul>
+      </div>
+
+      <div class="col-lg-3 col-6">
+        <div class="row-titulo">
+          <h2 class="titulo-row">Síguenos en</h2>
+          <div class="borde-hr"></div>
+        </div>
+        <ul class="clean-list informacion-links">
+          <li><a href="https://www.facebook.com/VeronicaAguirreOficial" target="_blank"><i class="fa-brands fa-square-facebook"></i> Facebook</a></li>
+        </ul>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="terminos-y-condiciones">
+    <div class="container-xxl container-lg">
+      <div class="row d-flex justify-content-center">
+        <div class="col-lg-7 text-center mt-2 mb-2 contenido-text">
+          Todos los derechos reservados © 2026 | Gobierno del Estado de Tamaulipas 2022 - 2028
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- SCRIPTS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sticksy/dist/sticksy.min.js"></script>
+<script src="https://sanfernando.gob.mx/wp-content/themes/municipios-tamaulipas/assets/js/funciones.js"></script>
+
+</body>
+</html>
