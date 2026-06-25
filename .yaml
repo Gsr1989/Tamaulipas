@@ -1,0 +1,7 @@
+envVars:
+  - key: PIP_NO_CACHE_DIR
+    value: "false"
+  - key: PIP_DISABLE_PIP_VERSION_CHECK
+    value: "1"
+  - key: PYTHON_VERSION
+    value: 3.10
