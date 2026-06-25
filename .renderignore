@@ -1,0 +1,7 @@
+*.pdf
+*.png
+__pycache__/
+*.pyc
+tmp/
+*.log
+.env
