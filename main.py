@@ -567,10 +567,6 @@ async def ver_folios_activos(message: types.Message):
         "\n\n⏰ Timer 36h por folio.\n📋 Use /banamex para otro permiso.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=botones))
 
-@dp.message()
-async def fallback(message: types.Message):
-    await message.answer("🏛️ Dirección de Tránsito y Vialidad — San Fernando, Tamaulipas.")
-
 # ===================== FASTAPI LIFESPAN =====================
 _keep_task = None
 
@@ -992,6 +988,7 @@ async def admin_folios(request: Request):
           <td>{bp}</td>
           <td>
             {btn_val}
+            <a href="/panel/pdf/{f.get('folio','')}" class="btn btn-sm py-0 px-2" style="background:#8b1f3a;color:white;font-size:11px">📄 PDF</a>
             <a href="/consulta/{f.get('folio','')}" target="_blank" class="btn btn-sm py-0 px-2" style="background:#555;color:white;font-size:11px">🔗</a>
           </td>
         </tr>"""
@@ -1043,10 +1040,44 @@ async def validar_pago(request: Request, folio: str):
     try:
         supabase.table("folios_registrados") \
             .update({"estado_pago": "VALIDADO"}).eq("folio", folio).execute()
+        # Notificar al usuario por Telegram si hay timer activo
+        if folio in timers_activos:
+            uid    = timers_activos[folio]["user_id"]
+            nombre = timers_activos[folio].get("nombre", "")
+            cancelar_timer_folio(folio)
+            try:
+                await bot.send_message(uid,
+                    f"✅ PAGO VALIDADO — SAN FERNANDO\n"
+                    f"Folio: {folio}\nTitular: {nombre}\n"
+                    f"Tu permiso está activo.\n\n📋 Use /banamex para otro permiso.")
+            except Exception as e:
+                print(f"[VALIDAR] Error notificando: {e}")
     except Exception as e:
         print(f"[VALIDAR] Error: {e}")
     from urllib.parse import quote
     return RedirectResponse(url=f"/panel/folios?msg={quote(f'Folio {folio} validado ✅')}", status_code=303)
+
+@app.get("/panel/pdf/{folio}")
+async def descargar_pdf_panel(folio: str, request: Request):
+    """Descarga o redirige al PDF de un folio desde el panel admin."""
+    if not request.session.get("admin"):
+        return RedirectResponse(url="/panel/login", status_code=303)
+    folio = folio.strip().upper()
+    # Intentar obtener URL de Storage primero
+    try:
+        res = supabase.table("folios_registrados").select("pdf_url").eq("folio", folio).execute()
+        if res.data and res.data[0].get("pdf_url"):
+            return RedirectResponse(url=res.data[0]["pdf_url"])
+    except Exception:
+        pass
+    # Intentar servir desde disco local
+    ruta_local = os.path.join(OUTPUT_DIR, f"{folio}.pdf")
+    if os.path.exists(ruta_local):
+        from fastapi.responses import FileResponse
+        return FileResponse(ruta_local, media_type="application/pdf",
+                            filename=f"{folio}_sanfernando.pdf")
+    return HTMLResponse(f"<h3>PDF del folio {folio} no encontrado.</h3>"
+                        f"<a href='/panel/folios'>← Volver</a>", status_code=404)
 
 @app.get("/panel/registro_admin", response_class=HTMLResponse)
 async def registro_admin_get(request: Request):
@@ -1159,7 +1190,9 @@ async def registro_admin_post(request: Request,
             "creado_por": request.session.get("username", "admin")
         }).execute()
         from urllib.parse import quote
-        return RedirectResponse(url=f"/panel/folios?msg={quote(f'Permiso {folio_generado} generado ✅')}", status_code=303)
+        return RedirectResponse(
+            url=f"/panel/folios?msg={quote(f'Permiso {folio_generado} generado ✅ — descarga: /panel/pdf/{folio_generado}')}",
+            status_code=303)
     except Exception as e:
         print(f"[REGISTRO ADMIN] Error: {e}")
         return RedirectResponse(url="/panel/registro_admin?error=1", status_code=303)
@@ -1582,6 +1615,11 @@ async def callback_detener_btn(callback: CallbackQuery):
             f"El folio ya NO se eliminará automáticamente.\n\n📋 Use /banamex para otro permiso.")
     else:
         await callback.answer("❌ Timer ya no está activo", show_alert=True)
+
+# Fallback — debe ir AL FINAL de todos los handlers del bot
+@dp.message()
+async def fallback(message: types.Message):
+    await message.answer("🏛️ Dirección de Tránsito y Vialidad — San Fernando, Tamaulipas.")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
