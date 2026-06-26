@@ -1592,7 +1592,7 @@ async def root():
   <div class="badge-ok">✅ Sistema Operativo</div>
   <div class="info">
     <strong>Versión:</strong> 1.0 — /banamex<br>
-    <strong>Costo:</strong> ${PRECIO_PERMISO} MXN<br>
+    <strong>Costo:</strong> ${'$'}{PRECIO_PERMISO} MXN<br>
     <strong>Tiempo límite:</strong> 36 horas<br>
     <strong>Timers activos:</strong> {len(timers_activos)}<br>
-    <strong>Siguiente folio:</stron
+    <strong>Siguiente folio:</
