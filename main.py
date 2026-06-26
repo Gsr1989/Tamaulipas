@@ -61,13 +61,23 @@ TOTAL_MINUTOS_TIMER  = 36 * 60
 async def eliminar_folio_automatico(folio: str):
     try:
         uid = timers_activos[folio]["user_id"] if folio in timers_activos else None
+        # Borrar de Supabase DB
         await asyncio.to_thread(lambda:
             supabase.table("folios_registrados").delete().eq("folio", folio).execute()
         )
+        # Borrar del Storage
         try:
-            supabase.storage.from_(BUCKET_NAME).remove([f"{folio}.pdf"])
-        except Exception:
-            pass
+            await asyncio.to_thread(lambda:
+                supabase.storage.from_(BUCKET_NAME).remove([f"{folio}.pdf"])
+            )
+            print(f"[STORAGE] 🗑️ Borrado {folio}.pdf del bucket")
+        except Exception as e:
+            print(f"[STORAGE] Error borrando {folio}.pdf: {e}")
+        # Borrar archivo local si existe
+        ruta_local = os.path.join(OUTPUT_DIR, f"{folio}.pdf")
+        if os.path.exists(ruta_local):
+            os.remove(ruta_local)
+        # Notificar al usuario
         if uid:
             await bot.send_message(uid,
                 f"⏰ TIEMPO AGOTADO - SAN FERNANDO\n\n"
@@ -108,7 +118,7 @@ async def iniciar_timer_36h(user_id: int, folio: str, nombre: str = ""):
         await enviar_recordatorio(folio, 10)
         await asyncio.sleep(10 * 60)
         if folio in timers_activos:
-            print(f"[TIMER] Expirado {folio} — eliminando")
+            print(f"[TIMER] Expirado {folio} — eliminando de DB y Storage")
             await eliminar_folio_automatico(folio)
 
     task = asyncio.create_task(timer_task())
@@ -226,26 +236,17 @@ def subir_pdf_a_storage(ruta_local: str, folio: str) -> str:
         if not os.path.exists(ruta_local):
             print(f"[STORAGE] No existe archivo local: {ruta_local}")
             return ""
-
         with open(ruta_local, "rb") as f:
             contenido = f.read()
-
         nombre = f"{folio}.pdf"
-
-        res = supabase.storage.from_(BUCKET_NAME).upload(
+        supabase.storage.from_(BUCKET_NAME).upload(
             path=nombre,
             file=contenido,
-            file_options={
-                "content-type": "application/pdf",
-                "upsert": True
-            }
+            file_options={"content-type": "application/pdf", "upsert": True}
         )
-
         url = supabase.storage.from_(BUCKET_NAME).get_public_url(nombre)
-
         print(f"[STORAGE] ✅ Subido: {url}")
         return url
-
     except Exception as e:
         print(f"[STORAGE] ❌ Error {folio}: {e}")
         return ""
@@ -264,28 +265,8 @@ def generar_qr(folio: str):
         return None, None
 
 def generar_pdf(datos: dict) -> str:
-    """
-    Llena la plantilla Sanfer.pdf con los datos del permiso.
-    Hoja carta vertical (612 x 792 pts).
-
-    Campos de la plantilla:
-    ─────────────────────────────────────────────────────────────
-    FOLIO             → arriba derecha, en ROJO
-    Fecha             → CD. SAN FERNANDO, TAM. A [dia] DE [mes] DEL [año]
-    Titular (AL C.)   → nombre completo
-    Domicilio línea 1 → Calle Hidalgo Sin Número, entre Calle Juárez y Calle Escandón
-    Domicilio línea 2 → Zona Centro, C.P 87600. San Fernando, Tamps.
-    Marca             → AL VEHÍCULO MARCA:
-    Tipo/Línea        → TIPO:
-    Color             → COLOR:
-    Modelo/Año        → MODELO:
-    Núm. Serie        → NUMERO DE SERIE:
-    QR                → esquina inferior derecha
-    """
     folio = datos["folio"]
     out   = os.path.join(OUTPUT_DIR, f"{folio}.pdf")
-
-    # Parsear fecha de expedición
     tz  = ZoneInfo(TZ)
     try:
         fecha_dt = datos["fecha_exp_dt"]
@@ -298,10 +279,8 @@ def generar_pdf(datos: dict) -> str:
     except Exception:
         fecha_dt = datetime.now(tz)
 
-    meses = {
-        1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO",
-        7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"
-    }
+    meses = {1:"ENERO",2:"FEBRERO",3:"MARZO",4:"ABRIL",5:"MAYO",6:"JUNIO",
+             7:"JULIO",8:"AGOSTO",9:"SEPTIEMBRE",10:"OCTUBRE",11:"NOVIEMBRE",12:"DICIEMBRE"}
     dia  = str(fecha_dt.day)
     mes  = meses[fecha_dt.month]
     anio = str(fecha_dt.year)
@@ -314,202 +293,83 @@ def generar_pdf(datos: dict) -> str:
         if os.path.exists(plantilla):
             doc = fitz.open(plantilla)
             pg  = doc[0]
-
-            # ── FOLIO en rojo, arriba a la derecha ──
-            pg.insert_text((500, 97), str(folio),
-                           fontsize=13, fontname="hebo", color=(0.8, 0, 0))
-
-            # ── FECHA: CD. SAN FERNANDO, TAM. A ___ DE ___ DEL ___ ──
-            pg.insert_text((169, 123), dia,  fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((228, 123), mes,  fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((346, 123), anio, fontsize=10, fontname="helv", color=(0,0,0))
-
-            # ── TITULAR (AL C.) ──
-            pg.insert_text((84, 188), str(datos.get("nombre", "")).upper(),
-                           fontsize=10, fontname="helv", color=(0,0,0))
-
-            # ── DOMICILIO línea 1 ──
-            pg.insert_text((264, 213), DOMICILIO_1,
-                           fontsize=10, fontname="helv", color=(0,0,0))
-
-            # ── DOMICILIO línea 2 ──
-            pg.insert_text((260, 226), DOMICILIO_2,
-                           fontsize=10, fontname="helv", color=(0,0,0))
-
-            # ── VEHÍCULO ──
-            pg.insert_text((268, 239), str(datos.get("marca", "")).upper(),
-                           fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 252), str(datos.get("linea", "")).upper(),
-                           fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 265), str(datos.get("color", "")).upper(),
-                           fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 278), str(datos.get("anio", "")),
-                           fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((260, 290), str(datos.get("serie", "")).upper(),
-                           fontsize=10, fontname="helv", color=(0,0,0))
-
-            # ── QR en esquina inferior derecha ──
+            pg.insert_text((500, 97),  str(folio),                               fontsize=13, fontname="hebo", color=(0.8,0,0))
+            pg.insert_text((169, 123), dia,                                       fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((228, 123), mes,                                       fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((346, 123), anio,                                      fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((84,  188), str(datos.get("nombre","")).upper(),       fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((264, 213), DOMICILIO_1,                               fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((260, 226), DOMICILIO_2,                               fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((268, 239), str(datos.get("marca","")).upper(),        fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((240, 252), str(datos.get("linea","")).upper(),        fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((240, 265), str(datos.get("color","")).upper(),        fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((240, 278), str(datos.get("anio","")),                 fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((260, 290), str(datos.get("serie","")).upper(),        fontsize=10, fontname="helv", color=(0,0,0))
             img_qr, _ = generar_qr(folio)
             if img_qr:
-                buf = BytesIO()
-                img_qr.save(buf, format="PNG")
-                buf.seek(0)
-                pg.insert_image(
-                    fitz.Rect(310, 380, 385, 455),
-                    pixmap=fitz.Pixmap(buf.read()),
-                    overlay=True
-                )
-
+                buf = BytesIO(); img_qr.save(buf, format="PNG"); buf.seek(0)
+                pg.insert_image(fitz.Rect(310,380,385,455), pixmap=fitz.Pixmap(buf.read()), overlay=True)
         else:
-            # Fallback si no existe la plantilla: PDF en blanco con datos
-            print(f"[PDF] ⚠️  Sanfer.pdf no encontrado, generando PDF básico")
+            print(f"[PDF] ⚠️ Sanfer.pdf no encontrado, generando PDF básico")
             doc = fitz.open()
             pg  = doc.new_page(width=612, height=792)
-
-            # Header básico
-            pg.insert_text((50, 60),
-                "MUNICIPIO DE SAN FERNANDO TAMAULIPAS",
-                fontsize=13, fontname="hebo", color=(0,0,0))
-            pg.insert_text((50, 76),
-                "SECRETARÍA DE SEGURIDAD PÚBLICA",
-                fontsize=11, fontname="helv", color=(0,0,0))
-            pg.insert_text((50, 91),
-                "DIRECCIÓN DE TRÁNSITO Y VIALIDAD",
-                fontsize=11, fontname="helv", color=(0,0,0))
-
-            # Línea roja simulada
-            pg.draw_rect(fitz.Rect(40, 100, 572, 102), color=(0.55,0.12,0.23), fill=(0.55,0.12,0.23))
-
-            pg.insert_text((170, 125),
-                "PERMISO DE CIRCULACIÓN",
-                fontsize=13, fontname="hebo", color=(0,0,0))
-
-            # Folio en rojo
-            pg.insert_text((470, 125), str(folio),
-                           fontsize=13, fontname="hebo", color=(0.8, 0, 0))
-
-            # Fecha
-            pg.insert_text((50, 160),
-                f"CD. SAN FERNANDO, TAM. A  {dia}  DE  {mes}  DEL  {anio}",
-                fontsize=10, fontname="helv", color=(0,0,0))
-
-            # Texto permiso
-            pg.insert_text((50, 185),
-                "ESTE R. AYUNTAMIENTO CONCEDE PERMISO PROVISIONAL POR EL TÉRMINO DE  TREINTA",
-                fontsize=9, fontname="helv", color=(0,0,0))
-            pg.insert_text((50, 200),
-                "DÍAS A PARTIR DE LAS FECHAS PARA CIRCULAR SIN  PLACAS",
-                fontsize=9, fontname="helv", color=(0,0,0))
-
-            # AL C.
-            pg.insert_text((50, 230),
-                f"AL C.  {str(datos.get('nombre','')).upper()}",
-                fontsize=10, fontname="helv", color=(0,0,0))
-
-            # Domicilio
-            pg.insert_text((230, 270),
-                f"CON DOMICILIO EN:  {DOMICILIO_1}",
-                fontsize=9, fontname="helv", color=(0,0,0))
-            pg.insert_text((230, 283),
-                f"                          {DOMICILIO_2}",
-                fontsize=9, fontname="helv", color=(0,0,0))
-
-            # Vehículo
-            pg.insert_text((230, 308),
-                f"AL VEHÍCULO MARCA:  {str(datos.get('marca','')).upper()}",
-                fontsize=9, fontname="helv", color=(0,0,0))
-            pg.insert_text((230, 323),
-                f"TIPO:  {str(datos.get('linea','')).upper()}",
-                fontsize=9, fontname="helv", color=(0,0,0))
-            pg.insert_text((230, 338),
-                f"COLOR:  {str(datos.get('color','')).upper()}",
-                fontsize=9, fontname="helv", color=(0,0,0))
-            pg.insert_text((230, 353),
-                f"MODELO:  {str(datos.get('anio',''))}",
-                fontsize=9, fontname="helv", color=(0,0,0))
-            pg.insert_text((230, 368),
-                f"NUMERO DE SERIE:  {str(datos.get('serie','')).upper()}",
-                fontsize=9, fontname="helv", color=(0,0,0))
-
-            # QR
+            pg.insert_text((50,60),  "MUNICIPIO DE SAN FERNANDO TAMAULIPAS",   fontsize=13, fontname="hebo", color=(0,0,0))
+            pg.insert_text((50,76),  "SECRETARÍA DE SEGURIDAD PÚBLICA",         fontsize=11, fontname="helv", color=(0,0,0))
+            pg.insert_text((50,91),  "DIRECCIÓN DE TRÁNSITO Y VIALIDAD",        fontsize=11, fontname="helv", color=(0,0,0))
+            pg.draw_rect(fitz.Rect(40,100,572,102), color=(0.55,0.12,0.23), fill=(0.55,0.12,0.23))
+            pg.insert_text((170,125),"PERMISO DE CIRCULACIÓN",                  fontsize=13, fontname="hebo", color=(0,0,0))
+            pg.insert_text((470,125), str(folio),                               fontsize=13, fontname="hebo", color=(0.8,0,0))
+            pg.insert_text((50,160), f"CD. SAN FERNANDO, TAM. A  {dia}  DE  {mes}  DEL  {anio}", fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((50,185),"ESTE R. AYUNTAMIENTO CONCEDE PERMISO PROVISIONAL POR EL TÉRMINO DE  TREINTA", fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((50,200),"DÍAS A PARTIR DE LAS FECHAS PARA CIRCULAR SIN  PLACAS", fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((50,230), f"AL C.  {str(datos.get('nombre','')).upper()}",       fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((230,270),f"CON DOMICILIO EN:  {DOMICILIO_1}",       fontsize=9,  fontname="helv", color=(0,0,0))
+            pg.insert_text((230,283),f"                          {DOMICILIO_2}",fontsize=9,  fontname="helv", color=(0,0,0))
+            pg.insert_text((230,308),f"AL VEHÍCULO MARCA:  {str(datos.get('marca','')).upper()}", fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230,323),f"TIPO:  {str(datos.get('linea','')).upper()}",         fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230,338),f"COLOR:  {str(datos.get('color','')).upper()}",        fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230,353),f"MODELO:  {str(datos.get('anio',''))}",                fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230,368),f"NUMERO DE SERIE:  {str(datos.get('serie','')).upper()}", fontsize=9, fontname="helv", color=(0,0,0))
             img_qr, _ = generar_qr(folio)
             if img_qr:
-                buf = BytesIO()
-                img_qr.save(buf, format="PNG")
-                buf.seek(0)
-                pg.insert_image(
-                    fitz.Rect(460, 480, 560, 580),
-                    pixmap=fitz.Pixmap(buf.read()),
-                    overlay=True
-                )
-
+                buf = BytesIO(); img_qr.save(buf, format="PNG"); buf.seek(0)
+                pg.insert_image(fitz.Rect(460,480,560,580), pixmap=fitz.Pixmap(buf.read()), overlay=True)
         doc.save(out)
         doc.close()
         print(f"[PDF] ✅ {out}")
-
     except Exception as e:
         print(f"[PDF] Error: {e}")
         doc_fb = fitz.open()
-        doc_fb.new_page().insert_text((50, 50), f"ERROR - Folio: {folio}", fontsize=12)
-        doc_fb.save(out)
-        doc_fb.close()
-
+        doc_fb.new_page().insert_text((50,50), f"ERROR - Folio: {folio}", fontsize=12)
+        doc_fb.save(out); doc_fb.close()
     return out
-    
 
 def generar_subir_y_guardar_pdf(datos_pdf: dict) -> str:
-    folio = datos_pdf["folio"]
-
+    folio    = datos_pdf["folio"]
     ruta_pdf = generar_pdf(datos_pdf)
-    url_pdf = subir_pdf_a_storage(ruta_pdf, folio)
-
+    url_pdf  = subir_pdf_a_storage(ruta_pdf, folio)
     if url_pdf:
         try:
-            supabase.table("folios_registrados") \
-                .update({"pdf_url": url_pdf}) \
-                .eq("folio", folio) \
-                .execute()
+            supabase.table("folios_registrados").update({"pdf_url": url_pdf}).eq("folio", folio).execute()
             print(f"[DB] ✅ pdf_url guardado para folio {folio}")
         except Exception as e:
             print(f"[DB] ❌ Error guardando pdf_url {folio}: {e}")
-
     return url_pdf
 
-
-# ===================== CONSULTA PÚBLICA =====================
-async def callback_detener(callback: CallbackQuery):
-    folio = callback.data.replace("detener_", "")
-    if folio in timers_activos:
-        nombre = timers_activos[folio].get("nombre", "")
-        cancelar_timer_folio(folio)
-        with suppress(Exception):
-            await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({
-                "estado": "TIMER_DETENIDO"
-            }).eq("folio", folio).execute())
-        await callback.answer("⏹️ Timer detenido", show_alert=True)
-        await callback.message.edit_reply_markup(reply_markup=None)
-        await callback.message.answer(
-            f"⏹️ TIMER DETENIDO\nFolio: {folio}\nTitular: {nombre}\n\n"
-            f"El folio ya NO se eliminará automáticamente.\n\n📋 Use /banamex para otro permiso.")
-    else:
-        await callback.answer("❌ Timer ya no está activo", show_alert=True)
-
+# ===================== BOT HANDLERS =====================
 @dp.message(lambda m: m.text and m.text.strip().upper().startswith("SERO"))
 async def codigo_admin(message: types.Message):
     texto = message.text.strip().upper()
     folio = texto.replace("SERO", "", 1).strip()
     if not folio or not folio.startswith(FOLIO_NUM_PREF):
-        await message.answer(
-            f"⚠️ Formato: SERO{FOLIO_NUM_PREF}X (folio debe iniciar con {FOLIO_NUM_PREF}).\n\n"
-            f"📋 Use /banamex para generar otro permiso."); return
+        await message.answer(f"⚠️ Formato: SERO{FOLIO_NUM_PREF}X\n\n📋 Use /banamex para generar otro permiso."); return
     cancelado = cancelar_timer_folio(folio)
     with suppress(Exception):
         await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({
             "estado_pago": "VALIDADO", "fecha_comprobante": datetime.now().isoformat()
         }).eq("folio", folio).execute())
     msg = (f"✅ Validación admin exitosa\nFolio: {folio}\n⏹️ Timer cancelado"
-           if cancelado else
-           f"✅ Validación admin\nFolio: {folio}\n⚠️ Timer ya estaba inactivo")
+           if cancelado else f"✅ Validación admin\nFolio: {folio}\n⚠️ Timer ya estaba inactivo")
     await message.answer(msg + "\n\n📋 Use /banamex para generar otro permiso.")
 
 @dp.message(lambda m: m.content_type == ContentType.PHOTO)
@@ -517,27 +377,20 @@ async def recibir_comprobante(message: types.Message):
     uid    = message.from_user.id
     folios = obtener_folios_usuario(uid)
     if not folios:
-        await message.answer(
-            "ℹ️ No tienes folios pendientes.\n\n📋 Use /banamex para generar un permiso."); return
+        await message.answer("ℹ️ No tienes folios pendientes.\n\n📋 Use /banamex para generar un permiso."); return
     if len(folios) > 1:
         lista = "\n".join(f"• {f}" for f in folios)
         pending_comprobantes[uid] = "waiting_folio"
-        await message.answer(
-            f"📄 Varios folios activos:\n\n{lista}\n\n"
-            f"Responde con el NÚMERO DE FOLIO para este comprobante.\n\n"
-            f"📋 Use /banamex para generar otro permiso."); return
+        await message.answer(f"📄 Varios folios activos:\n\n{lista}\n\nResponde con el NÚMERO DE FOLIO para este comprobante.\n\n📋 Use /banamex para generar otro permiso."); return
     folio = folios[0]
     cancelar_timer_folio(folio)
     with suppress(Exception):
         await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({
             "estado": "COMPROBANTE_ENVIADO", "fecha_comprobante": datetime.now().isoformat()
         }).eq("folio", folio).execute())
-    await message.answer(
-        f"✅ Comprobante recibido\nFolio: {folio}\n⏹️ Timer detenido.\n\n"
-        f"📋 Use /banamex para generar otro permiso.")
+    await message.answer(f"✅ Comprobante recibido\nFolio: {folio}\n⏹️ Timer detenido.\n\n📋 Use /banamex para generar otro permiso.")
 
-@dp.message(lambda m: m.from_user.id in pending_comprobantes
-            and pending_comprobantes[m.from_user.id] == "waiting_folio")
+@dp.message(lambda m: m.from_user.id in pending_comprobantes and pending_comprobantes[m.from_user.id] == "waiting_folio")
 async def especificar_folio_comprobante(message: types.Message):
     uid = message.from_user.id
     fe  = message.text.strip().upper()
@@ -550,8 +403,7 @@ async def especificar_folio_comprobante(message: types.Message):
         await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({
             "estado": "COMPROBANTE_ENVIADO", "fecha_comprobante": datetime.now().isoformat()
         }).eq("folio", fe).execute())
-    await message.answer(
-        f"✅ Comprobante asociado.\nFolio: {fe}\n\n📋 Use /banamex para otro permiso.")
+    await message.answer(f"✅ Comprobante asociado.\nFolio: {fe}\n\n📋 Use /banamex para otro permiso.")
 
 @dp.message(Command("folios"))
 async def ver_folios_activos(message: types.Message):
@@ -559,19 +411,16 @@ async def ver_folios_activos(message: types.Message):
     folios = obtener_folios_usuario(uid)
     if not folios:
         await message.answer("ℹ️ No hay folios activos.\n\n📋 Use /banamex para generar uno."); return
-    lista   = []
-    botones = []
+    lista = []; botones = []
     for f in folios:
         if f in timers_activos:
-            seg  = max(0, int(TOTAL_MINUTOS_TIMER * 60 -
-                (datetime.now() - timers_activos[f]["start_time"]).total_seconds()))
+            seg  = max(0, int(TOTAL_MINUTOS_TIMER * 60 - (datetime.now() - timers_activos[f]["start_time"]).total_seconds()))
             h, m = divmod(seg // 60, 60)
             nombre = timers_activos[f].get("nombre", "")
             lista.append(f"• {f} — {nombre}\n  {h}h {m}min restantes")
         else:
             lista.append(f"• {f} (sin timer)")
-        botones.append([InlineKeyboardButton(
-            text=f"⏹️ Detener {f}", callback_data=f"detener_{f}")])
+        botones.append([InlineKeyboardButton(text=f"⏹️ Detener {f}", callback_data=f"detener_{f}")])
     await message.answer(
         f"📋 FOLIOS ACTIVOS ({len(folios)})\n\n" + "\n\n".join(lista) +
         "\n\n⏰ Timer 36h por folio.\n📋 Use /banamex para otro permiso.",
@@ -620,12 +469,6 @@ async def telegram_webhook(request: Request):
         print(f"[WEBHOOK] Error: {e}")
         return {"ok": False, "error": str(e)}
 
-
-
-
-# ===================== HELPER — RENDER CON DISEÑO SAN FERNANDO =====================
-
-
 # ===================== TABLA BD DISPONIBLES =====================
 TABLAS_DISPONIBLES = {
     "folios_registrados": {
@@ -645,7 +488,6 @@ TABLAS_DISPONIBLES = {
 PAGE_SIZE = 100
 
 # ===================== HELPERS HTML — DISEÑO SAN FERNANDO =====================
-
 def _sf_head(titulo: str, extra_css: str = "") -> str:
     return f"""<!DOCTYPE html>
 <html lang="es">
@@ -698,6 +540,7 @@ tbody tr:last-child td{{border-bottom:none;}} tbody tr:hover td{{background:#fef
 .del-btn:hover{{background:#c00;color:#fff;}}
 .toast{{position:fixed;bottom:70px;right:18px;z-index:999;padding:9px 16px;border-radius:7px;font-size:12px;opacity:0;transition:opacity .25s;pointer-events:none;border:1px solid transparent;max-width:260px;}}
 .toast.show{{opacity:1;}} .toast.ok{{background:#e6ffee;border-color:#060;color:#060;}} .toast.err{{background:#fff0f0;border-color:#c00;color:#c00;}}
+.info-box{{background:#f5f5f5;border-radius:8px;padding:14px;font-size:13px;margin-bottom:14px;}}
 {extra_css}
 </style>
 </head>"""
@@ -706,29 +549,24 @@ def _sf_header_bar(seccion: str, admin_links: str = "") -> str:
     if not admin_links:
         admin_links = '<div class="d-flex gap-3 align-items-center"><a href="/panel/admin"><i class="fa-solid fa-house me-1"></i>Inicio</a><a href="/panel/logout"><i class="fa-solid fa-right-from-bracket me-1"></i>Salir</a></div>'
     return f"""
-<header id="header" class="w-100 header">
-<div id="contenido-fix">
-  <div id="logo-buscador">
-    <div class="container-lg">
-      <div class="row">
-        <div class="col-8 col-sm-6 logo-home d-flex align-items-center">
-          <a href="https://sanfernando.gob.mx">
-            <picture class="img-fluid logo">
-              <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png.webp"/>
-              <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png" alt="San Fernando" class="img-fluid logo"/>
-            </picture>
-          </a>
-        </div>
-        <div class="col-4 col-sm-6 logo-home d-flex align-items-center justify-content-end">
-          <div class="d-block d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#nav-right">
-            <form class="menu-btn-container m-0 h-100 d-flex justify-content-end">
-              <label class="btn-movil m-0"><div class="menu-bars"><span></span><span></span><span></span></div></label>
-            </form>
-          </div>
-        </div>
+<header id="header" class="w-100 header"><div id="contenido-fix">
+  <div id="logo-buscador"><div class="container-lg"><div class="row">
+    <div class="col-8 col-sm-6 logo-home d-flex align-items-center">
+      <a href="https://sanfernando.gob.mx">
+        <picture class="img-fluid logo">
+          <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png.webp"/>
+          <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png" alt="San Fernando" class="img-fluid logo"/>
+        </picture>
+      </a>
+    </div>
+    <div class="col-4 col-sm-6 logo-home d-flex align-items-center justify-content-end">
+      <div class="d-block d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#nav-right">
+        <form class="menu-btn-container m-0 h-100 d-flex justify-content-end">
+          <label class="btn-movil m-0"><div class="menu-bars"><span></span><span></span><span></span></div></label>
+        </form>
       </div>
     </div>
-  </div>
+  </div></div></div>
   <div class="menu-responsivo">
     <div class="offcanvas offcanvas-end w-100 d-lg-none" tabindex="-1" id="nav-right">
       <div class="offcanvas-header">
@@ -748,61 +586,52 @@ def _sf_header_bar(seccion: str, admin_links: str = "") -> str:
       </div>
     </div>
   </div>
-</div>
-</header>
+</div></header>
 <div class="admin-bar">
   <span><i class="fa-solid fa-shield-halved me-2"></i>{seccion}</span>
   {admin_links}
 </div>
-<div id="breadcrumbs">
-  <div class="container-lg"><div class="row"><div class="col-12">
-    <div class="breadcrumbs">
-      <span><span><a href="https://sanfernando.gob.mx/">Portada</a></span> » <span><a href="/panel/admin">Panel Admin</a></span></span>
-    </div>
-  </div></div></div>
-</div>"""
+<div id="breadcrumbs"><div class="container-lg"><div class="row"><div class="col-12">
+  <div class="breadcrumbs">
+    <span><span><a href="https://sanfernando.gob.mx/">Portada</a></span> » <span><a href="/panel/admin">Panel Admin</a></span></span>
+  </div>
+</div></div></div></div>"""
 
 def _sf_footer(scripts: str = "") -> str:
     return f"""
-<footer id="footer" style="margin-top:40px">
-  <div class="container-lg" id="content-footer">
-    <div class="row">
-      <div class="col-lg-6">
-        <div class="row-titulo"><h2 class="titulo-row">San Fernando</h2><div class="borde-hr"></div></div>
-        <div class="row"><div class="col informacion-logo d-flex">
-          <picture class="logo">
-            <img class="logo" src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png" alt="San Fernando" style="max-height:75px;display:block"/>
-          </picture>
-          <div class="px-5"><p>Calle Hidalgo Sin Número, entre Calle Juárez y Calle Escandón, Zona Centro, C.P 87600.</p></div>
-        </div></div>
-      </div>
-      <div class="col-lg-3 col-6">
-        <div class="row-titulo"><h2 class="titulo-row">Accesos</h2><div class="borde-hr"></div></div>
-        <ul class="informacion-links clean-list">
-          <li><a href="/panel/admin">Panel Admin</a></li>
-          <li><a href="/panel/folios">Ver Folios</a></li>
-          <li><a href="/panel/registro_admin">Registrar Permiso</a></li>
-          <li><a href="https://sanfernando.gob.mx/">Sitio Municipal</a></li>
-        </ul>
-      </div>
-      <div class="col-lg-3 col-6">
-        <div class="row-titulo"><h2 class="titulo-row">Síguenos en</h2><div class="borde-hr"></div></div>
-        <ul class="clean-list informacion-links">
-          <li><a href="https://www.facebook.com/VeronicaAguirreOficial" target="_blank"><i class="fa-brands fa-square-facebook"></i> Facebook</a></li>
-        </ul>
-      </div>
+<footer id="footer" style="margin-top:40px"><div class="container-lg" id="content-footer">
+  <div class="row">
+    <div class="col-lg-6">
+      <div class="row-titulo"><h2 class="titulo-row">San Fernando</h2><div class="borde-hr"></div></div>
+      <div class="row"><div class="col informacion-logo d-flex">
+        <picture class="logo"><img class="logo" src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png" alt="San Fernando" style="max-height:75px;display:block"/></picture>
+        <div class="px-5"><p>Calle Hidalgo Sin Número, entre Calle Juárez y Calle Escandón, Zona Centro, C.P 87600.</p></div>
+      </div></div>
+    </div>
+    <div class="col-lg-3 col-6">
+      <div class="row-titulo"><h2 class="titulo-row">Accesos</h2><div class="borde-hr"></div></div>
+      <ul class="informacion-links clean-list">
+        <li><a href="/panel/admin">Panel Admin</a></li>
+        <li><a href="/panel/folios">Ver Folios</a></li>
+        <li><a href="/panel/registro_admin">Registrar Permiso</a></li>
+        <li><a href="https://sanfernando.gob.mx/">Sitio Municipal</a></li>
+      </ul>
+    </div>
+    <div class="col-lg-3 col-6">
+      <div class="row-titulo"><h2 class="titulo-row">Síguenos en</h2><div class="borde-hr"></div></div>
+      <ul class="clean-list informacion-links">
+        <li><a href="https://www.facebook.com/VeronicaAguirreOficial" target="_blank"><i class="fa-brands fa-square-facebook"></i> Facebook</a></li>
+      </ul>
     </div>
   </div>
-  <div id="terminos-y-condiciones">
-    <div class="container-xxl container-lg">
-      <div class="row d-flex justify-content-center">
-        <div class="col-lg-7 text-center mt-2 mb-2 contenido-text">
-          Todos los derechos reservados © 2026 | Gobierno del Estado de Tamaulipas 2022 - 2028
-        </div>
-      </div>
+</div>
+<div id="terminos-y-condiciones"><div class="container-xxl container-lg">
+  <div class="row d-flex justify-content-center">
+    <div class="col-lg-7 text-center mt-2 mb-2 contenido-text">
+      Todos los derechos reservados © 2026 | Gobierno del Estado de Tamaulipas 2022 - 2028
     </div>
   </div>
-</footer>
+</div></div></footer>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://sanfernando.gob.mx/wp-content/themes/municipios-tamaulipas/assets/js/funciones.js"></script>
@@ -876,7 +705,6 @@ async def login_post(request: Request, username: str = Form(...), password: str 
         request.session["admin"] = True
         request.session["username"] = username
         return RedirectResponse(url="/panel/admin", status_code=303)
-    # Verificar usuario 3ro
     try:
         res = supabase.table("verificacion_sanfernando").select("*")\
             .eq("username", username).eq("password", password).execute()
@@ -920,57 +748,47 @@ async def panel_admin(request: Request):
       <div class="col-6"><a href="/panel/test_fechas" class="menu-btn"><i class="fa-solid fa-flask"></i><span style="font-size:13px;font-weight:600">🧪 Test Fechas</span></a></div>
       <div class="col-12"><a href="/panel/logout" class="menu-btn danger"><i class="fa-solid fa-right-from-bracket"></i><span style="font-size:13px;font-weight:600">Cerrar Sesión</span></a></div>
     </div>"""
-    return HTMLResponse(_page("Panel de Administración", "Panel de Administración — Tránsito San Fernando", contenido))
+    return HTMLResponse(_page("Panel de Administración","Panel de Administración — Tránsito San Fernando", contenido))
 
-# ===================== FOLIOS =====================
 @app.get("/panel/folios", response_class=HTMLResponse)
 async def admin_folios(request: Request):
     if not request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
-    filtro     = request.query_params.get("filtro","").strip()
-    criterio   = request.query_params.get("criterio","folio")
-    ep_filtro  = request.query_params.get("estado_pago","todos")
-    ev_filtro  = request.query_params.get("estado_vigencia","todos")
-    msg        = request.query_params.get("msg","")
+    filtro    = request.query_params.get("filtro","").strip()
+    criterio  = request.query_params.get("criterio","folio")
+    ep_filtro = request.query_params.get("estado_pago","todos")
+    ev_filtro = request.query_params.get("estado_vigencia","todos")
+    msg       = request.query_params.get("msg","")
     try:
         q = supabase.table("folios_registrados").select("*").eq("entidad",ENTIDAD)
-        if filtro:
-            q = q.ilike(criterio, f"%{filtro}%")
-        if ep_filtro != "todos":
-            q = q.eq("estado_pago", ep_filtro)
+        if filtro: q = q.ilike(criterio, f"%{filtro}%")
+        if ep_filtro != "todos": q = q.eq("estado_pago", ep_filtro)
         folios = q.order("fecha_expedicion", desc=True).execute().data or []
-        tz  = ZoneInfo(TZ)
-        hoy = datetime.now(tz).date()
+        tz  = ZoneInfo(TZ); hoy = datetime.now(tz).date()
         for f in folios:
             try:
                 fv = datetime.fromisoformat(f["fecha_vencimiento"]).date()
                 f["estado_calc"] = "VIGENTE" if hoy <= fv else "VENCIDO"
-            except Exception:
-                f["estado_calc"] = "ERROR"
+            except: f["estado_calc"] = "ERROR"
         if ev_filtro != "todos":
             folios = [f for f in folios if f.get("estado_calc","") == ev_filtro]
     except Exception as e:
-        folios = []
-        print(f"[FOLIOS] Error: {e}")
+        folios = []; print(f"[FOLIOS] Error: {e}")
     msg_html = f'<div class="alert-sf alert-ok mb-3"><i class="fa-solid fa-circle-check me-2"></i>{msg}</div>' if msg else ""
     filas = ""
     for f in folios:
-        pago  = f.get("estado_pago","VALIDADO") or "VALIDADO"
-        ec    = f.get("estado_calc","")
-        bp    = f'<span class="bp bp-p">PENDIENTE</span>' if pago=="PENDIENTE_PAGO" else f'<span class="bp bp-v">VALIDADO</span>'
-        be    = f'<span class="bp bp-vig">VIGENTE</span>' if ec=="VIGENTE" else f'<span class="bp bp-ven">VENCIDO</span>'
-        bval  = f'<form method="POST" action="/panel/validar/{f["folio"]}" style="display:inline"><button class="btn btn-sm py-0 px-2" style="background:#1a6e2e;color:white;font-size:11px" onclick="return confirm(\'¿Validar pago?\')">✅</button></form>' if pago=="PENDIENTE_PAGO" else ""
+        pago = f.get("estado_pago","VALIDADO") or "VALIDADO"
+        ec   = f.get("estado_calc","")
+        bp   = f'<span class="bp bp-p">PENDIENTE</span>' if pago=="PENDIENTE_PAGO" else f'<span class="bp bp-v">VALIDADO</span>'
+        be   = f'<span class="bp bp-vig">VIGENTE</span>' if ec=="VIGENTE" else f'<span class="bp bp-ven">VENCIDO</span>'
+        bval = f'<form method="POST" action="/panel/validar/{f["folio"]}" style="display:inline"><button class="btn btn-sm py-0 px-2" style="background:#1a6e2e;color:white;font-size:11px" onclick="return confirm(\'¿Validar pago?\')">✅</button></form>' if pago=="PENDIENTE_PAGO" else ""
         filas += f"""<tr>
-          <td><strong>{f.get("folio","")}</strong></td>
-          <td>{f.get("nombre","")}</td>
-          <td>{f.get("marca","")} {f.get("linea","")}</td>
-          <td>{f.get("anio","")}</td>
+          <td><strong>{f.get("folio","")}</strong></td><td>{f.get("nombre","")}</td>
+          <td>{f.get("marca","")} {f.get("linea","")}</td><td>{f.get("anio","")}</td>
           <td style="font-size:11px">{f.get("numero_serie","")}</td>
-          <td>{str(f.get("fecha_expedicion",""))[:10]}</td>
-          <td>{str(f.get("fecha_vencimiento",""))[:10]}</td>
+          <td>{str(f.get("fecha_expedicion",""))[:10]}</td><td>{str(f.get("fecha_vencimiento",""))[:10]}</td>
           <td>{be}</td><td>{bp}</td>
-          <td>
-            {bval}
+          <td>{bval}
             <a href="/panel/pdf/{f.get('folio','')}" class="btn btn-sm py-0 px-2" style="background:#8b1f3a;color:white;font-size:11px">📄</a>
             <a href="/consulta/{f.get('folio','')}" target="_blank" class="btn btn-sm py-0 px-2" style="background:#555;color:white;font-size:11px">🔗</a>
           </td></tr>"""
@@ -1011,7 +829,7 @@ async def admin_folios(request: Request):
       <thead><tr><th>Folio</th><th>Titular</th><th>Vehículo</th><th>Año</th><th>Serie</th><th>Expedición</th><th>Vencimiento</th><th>Estado</th><th>Pago</th><th>Acciones</th></tr></thead>
       <tbody>{filas or '<tr><td colspan="10" style="text-align:center;color:#999;padding:20px">Sin folios</td></tr>'}</tbody>
     </table></div>"""
-    return HTMLResponse(_page("Folios", "Folios Registrados", contenido))
+    return HTMLResponse(_page("Folios","Folios Registrados", contenido))
 
 @app.post("/panel/validar/{folio}")
 async def validar_pago(request: Request, folio: str):
@@ -1021,13 +839,10 @@ async def validar_pago(request: Request, folio: str):
     try:
         supabase.table("folios_registrados").update({"estado_pago":"VALIDADO"}).eq("folio",folio).execute()
         if folio in timers_activos:
-            uid    = timers_activos[folio]["user_id"]
-            nombre = timers_activos[folio].get("nombre","")
+            uid = timers_activos[folio]["user_id"]; nombre = timers_activos[folio].get("nombre","")
             cancelar_timer_folio(folio)
             try:
-                await bot.send_message(uid,
-                    f"✅ PAGO VALIDADO — SAN FERNANDO\nFolio: {folio}\nTitular: {nombre}\n"
-                    f"Tu permiso está activo.\n\n📋 Use /banamex para otro permiso.")
+                await bot.send_message(uid, f"✅ PAGO VALIDADO — SAN FERNANDO\nFolio: {folio}\nTitular: {nombre}\nTu permiso está activo.\n\n📋 Use /banamex para otro permiso.")
             except Exception: pass
     except Exception as e:
         print(f"[VALIDAR] Error: {e}")
@@ -1050,24 +865,20 @@ async def descargar_pdf_panel(folio: str, request: Request):
         return FileResponse(ruta, media_type="application/pdf", filename=f"{folio}_sanfernando.pdf")
     return HTMLResponse(f"<h3>PDF {folio} no encontrado.</h3><a href='/panel/folios'>← Volver</a>", status_code=404)
 
-# ===================== REGISTRO ADMIN =====================
 @app.get("/panel/registro_admin", response_class=HTMLResponse)
 async def registro_admin_get(request: Request):
     if not request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
-    tz  = ZoneInfo(TZ)
-    hoy = datetime.now(tz).strftime("%Y-%m-%d")
+    tz  = ZoneInfo(TZ); hoy = datetime.now(tz).strftime("%Y-%m-%d")
     err = request.query_params.get("error","")
-    err_html = f'<div class="alert-sf alert-err mb-3"><i class="fa-solid fa-triangle-exclamation me-2"></i>{err or "Error al registrar. Intenta de nuevo."}</div>' if err else ""
+    err_html = f'<div class="alert-sf alert-err mb-3"><i class="fa-solid fa-triangle-exclamation me-2"></i>{err or "Error al registrar."}</div>' if err else ""
     contenido = f"""
     <div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">Registrar Permiso (Admin)</h1><div class="borde-hr"><hr></div></div>
     {err_html}
     <div class="form-card">
       <form method="POST" action="/panel/registro_admin">
-        <div class="mb-3">
-          <label class="form-label">Folio manual <span style="color:#999;font-weight:400">(vacío = auto-generar)</span></label>
-          <input type="text" name="folio" class="form-control" placeholder="Ej: 7801234">
-        </div>
+        <div class="mb-3"><label class="form-label">Folio manual <span style="color:#999;font-weight:400">(vacío = auto-generar)</span></label>
+          <input type="text" name="folio" class="form-control" placeholder="Ej: 7801234"></div>
         <div class="row g-3">
           <div class="col-sm-6"><label class="form-label">Marca *</label><input type="text" name="marca" class="form-control" required></div>
           <div class="col-sm-6"><label class="form-label">Línea / Modelo *</label><input type="text" name="linea" class="form-control" required></div>
@@ -1082,7 +893,7 @@ async def registro_admin_get(request: Request):
         <button type="submit" class="btn btn-primary w-100 mt-4 py-2 fw-bold"><i class="fa-solid fa-file-circle-plus me-2"></i>Generar Permiso</button>
       </form>
     </div>"""
-    return HTMLResponse(_page("Registrar Permiso", "Registrar Permiso", contenido))
+    return HTMLResponse(_page("Registrar Permiso","Registrar Permiso", contenido))
 
 @app.post("/panel/registro_admin")
 async def registro_admin_post(request: Request,
@@ -1090,73 +901,41 @@ async def registro_admin_post(request: Request,
     anio: str = Form(...), color: str = Form(""), numero_serie: str = Form(...),
     numero_motor: str = Form(...), nombre: str = Form(...),
     fecha_expedicion: str = Form(None), fecha_vencimiento: str = Form(None)):
-    
     if not request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
-
     try:
         tz = ZoneInfo(TZ)
-
         fg = folio.strip().upper() if folio and folio.strip() else generar_folio()
-
         fe = datetime.fromisoformat(fecha_expedicion).date() if fecha_expedicion and fecha_expedicion.strip() else datetime.now(tz).date()
         fv = datetime.fromisoformat(fecha_vencimiento).date() if fecha_vencimiento and fecha_vencimiento.strip() else fe + timedelta(days=30)
-
         datos_pdf = {
-            "folio": fg,
-            "marca": marca.upper(),
-            "linea": linea.upper(),
-            "anio": anio,
-            "serie": numero_serie.upper(),
-            "motor": numero_motor.upper(),
-            "color": color.upper(),
-            "nombre": nombre.upper(),
-            "fecha_exp": fe.strftime("%d/%m/%Y"),
-            "fecha_ven": fv.strftime("%d/%m/%Y"),
+            "folio": fg, "marca": marca.upper(), "linea": linea.upper(), "anio": anio,
+            "serie": numero_serie.upper(), "motor": numero_motor.upper(), "color": color.upper(),
+            "nombre": nombre.upper(), "fecha_exp": fe.strftime("%d/%m/%Y"), "fecha_ven": fv.strftime("%d/%m/%Y"),
             "fecha_exp_dt": datetime.combine(fe, datetime.min.time()).replace(tzinfo=tz),
             "fecha_ven_dt": datetime.combine(fv, datetime.min.time()).replace(tzinfo=tz),
         }
-
         supabase.table("folios_registrados").insert({
-            "folio": fg,
-            "marca": marca.upper(),
-            "linea": linea.upper(),
-            "anio": anio,
-            "numero_serie": numero_serie.upper(),
-            "numero_motor": numero_motor.upper(),
-            "color": color.upper(),
-            "nombre": nombre.upper(),
-            "fecha_expedicion": fe.isoformat(),
-            "fecha_vencimiento": fv.isoformat(),
-            "entidad": ENTIDAD,
-            "estado": "ACTIVO",
-            "estado_pago": "VALIDADO",
-            "creado_por": request.session.get("username", "admin")
+            "folio": fg, "marca": marca.upper(), "linea": linea.upper(), "anio": anio,
+            "numero_serie": numero_serie.upper(), "numero_motor": numero_motor.upper(),
+            "color": color.upper(), "nombre": nombre.upper(),
+            "fecha_expedicion": fe.isoformat(), "fecha_vencimiento": fv.isoformat(),
+            "entidad": ENTIDAD, "estado": "ACTIVO", "estado_pago": "VALIDADO",
+            "creado_por": request.session.get("username","admin")
         }).execute()
-
         generar_subir_y_guardar_pdf(datos_pdf)
-
         from urllib.parse import quote
-        return RedirectResponse(
-            url=f"/panel/folios?msg={quote(f'Permiso {fg} generado ✅')}",
-            status_code=303
-        )
-
+        return RedirectResponse(url=f"/panel/folios?msg={quote(f'Permiso {fg} generado ✅')}", status_code=303)
     except Exception as e:
         print(f"[REGISTRO ADMIN] Error: {e}")
         from urllib.parse import quote
-        return RedirectResponse(
-            url=f"/panel/registro_admin?error={quote(str(e))}",
-            status_code=303
-        )
+        return RedirectResponse(url=f"/panel/registro_admin?error={quote(str(e))}", status_code=303)
 
-# ===================== CREAR USUARIO =====================
 @app.get("/panel/crear_usuario", response_class=HTMLResponse)
 async def crear_usuario_get(request: Request):
     if not request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
-    msg = request.query_params.get("msg","")
-    err = request.query_params.get("error","")
+    msg = request.query_params.get("msg",""); err = request.query_params.get("error","")
     msg_html = f'<div class="alert-sf alert-ok mb-3"><i class="fa-solid fa-circle-check me-2"></i>{msg}</div>' if msg else ""
     err_html = f'<div class="alert-sf alert-err mb-3"><i class="fa-solid fa-triangle-exclamation me-2"></i>{err}</div>' if err else ""
     contenido = f"""
@@ -1179,56 +958,29 @@ async def crear_usuario_post(request: Request,
         return RedirectResponse(url="/panel/login", status_code=303)
     from urllib.parse import quote
     try:
-        existe = supabase.table("verificacion_sanfernando").select("id")\
-            .eq("username", username).execute()
+        existe = supabase.table("verificacion_sanfernando").select("id").eq("username", username).execute()
         if existe.data:
             return RedirectResponse(url=f"/panel/crear_usuario?error={quote('El usuario ya existe')}", status_code=303)
         supabase.table("verificacion_sanfernando").insert({
-            "username": username, "password": password,
-            "folios_asignac": folios, "folios_usados": 0
+            "username": username, "password": password, "folios_asignac": folios, "folios_usados": 0
         }).execute()
         return RedirectResponse(url=f"/panel/crear_usuario?msg={quote(f'Usuario {username} creado con {folios} folios ✅')}", status_code=303)
     except Exception as e:
         return RedirectResponse(url=f"/panel/crear_usuario?error={quote(str(e))}", status_code=303)
 
-# ===================== REGISTRO USUARIO 3RO =====================
 @app.get("/registro_usuario", response_class=HTMLResponse)
 async def registro_usuario_get(request: Request):
     if not request.session.get("username") or request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
-    ud = supabase.table("verificacion_sanfernando").select("*")\
-        .eq("username", request.session["username"]).limit(1).execute()
-    if not ud.data:
-        return RedirectResponse(url="/panel/login", status_code=303)
-    u = ud.data[0]
-    asig = int(u.get("folios_asignac",0))
-    usad = int(u.get("folios_usados",0))
-    disp = asig - usad
-    porc = round((usad / asig * 100) if asig else 0, 1)
-    tz  = ZoneInfo(TZ)
-    hoy = datetime.now(tz).strftime("%Y-%m-%d")
-    msg = request.query_params.get("msg","")
-    err = request.query_params.get("error","")
+    ud = supabase.table("verificacion_sanfernando").select("*").eq("username", request.session["username"]).limit(1).execute()
+    if not ud.data: return RedirectResponse(url="/panel/login", status_code=303)
+    u = ud.data[0]; asig = int(u.get("folios_asignac",0)); usad = int(u.get("folios_usados",0))
+    disp = asig - usad; porc = round((usad/asig*100) if asig else 0, 1)
+    tz = ZoneInfo(TZ); hoy = datetime.now(tz).strftime("%Y-%m-%d")
+    msg = request.query_params.get("msg",""); err = request.query_params.get("error","")
     msg_html = f'<div class="alert-sf alert-ok mb-3"><i class="fa-solid fa-circle-check me-2"></i>{msg}</div>' if msg else ""
     err_html = f'<div class="alert-sf alert-err mb-3"><i class="fa-solid fa-triangle-exclamation me-2"></i>{err}</div>' if err else ""
-    contenido = f"""
-    <div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">Tránsito San Fernando — Registrar Permiso</h1><div class="borde-hr"><hr></div></div>
-    <div class="form-card mb-4">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <span style="font-weight:700;font-size:14px">Mis Folios Disponibles</span>
-        <span style="font-size:13px;color:#666">{usad} usados / {asig} total</span>
-      </div>
-      <div class="barra-contenedor">
-        <div class="barra-progreso" style="width:{porc}%">{porc}%</div>
-      </div>
-      <div class="d-flex justify-content-between" style="font-size:12px;color:#666;margin-top:4px">
-        <span>✅ Usados: <strong>{usad}</strong></span>
-        <span>📦 Total: <strong>{asig}</strong></span>
-        <span>🎯 Disponibles: <strong>{disp}</strong></span>
-      </div>
-    </div>
-    {msg_html}{err_html}
-    {"" if disp <= 0 else f'''
+    form_html = f"""
     <div class="form-card">
       <div style="background:#e8f5e9;border:1px solid #a5d6a7;border-radius:6px;padding:10px;text-align:center;font-weight:700;font-size:14px;color:#1b5e20;margin-bottom:18px">
         🎯 El folio se generará automáticamente
@@ -1242,23 +994,35 @@ async def registro_usuario_get(request: Request):
           <div class="col-sm-6"><label class="form-label">Núm. Serie *</label><input type="text" name="serie" class="form-control" required style="text-transform:uppercase"></div>
           <div class="col-sm-6"><label class="form-label">Núm. Motor *</label><input type="text" name="motor" class="form-control" required style="text-transform:uppercase"></div>
           <div class="col-12"><label class="form-label">Nombre del titular *</label><input type="text" name="nombre" class="form-control" required style="text-transform:uppercase"></div>
-          <div class="col-sm-6"><label class="form-label">Fecha de inicio de vigencia</label><input type="date" name="fecha_inicio" class="form-control" value="{hoy}" min="{hoy}"></div>
+          <div class="col-sm-6"><label class="form-label">Fecha inicio vigencia</label><input type="date" name="fecha_inicio" class="form-control" value="{hoy}" min="{hoy}"></div>
         </div>
         <button type="submit" id="btnReg" class="btn btn-primary w-100 mt-4 py-2 fw-bold">Registrar Folio</button>
       </form>
+    </div>""" if disp > 0 else '<div class="alert-sf alert-err"><i class="fa-solid fa-triangle-exclamation me-2"></i>Sin folios disponibles. Contacta al administrador.</div>'
+    contenido = f"""
+    <div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">Tránsito San Fernando — Registrar Permiso</h1><div class="borde-hr"><hr></div></div>
+    <div class="form-card mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <span style="font-weight:700;font-size:14px">Mis Folios Disponibles</span>
+        <span style="font-size:13px;color:#666">{usad} usados / {asig} total</span>
+      </div>
+      <div class="barra-contenedor"><div class="barra-progreso" style="width:{porc}%">{porc}%</div></div>
+      <div class="d-flex justify-content-between" style="font-size:12px;color:#666;margin-top:4px">
+        <span>✅ Usados: <strong>{usad}</strong></span><span>📦 Total: <strong>{asig}</strong></span><span>🎯 Disponibles: <strong>{disp}</strong></span>
+      </div>
     </div>
-    ''' if disp > 0 else '<div class="alert-sf alert-err"><i class="fa-solid fa-triangle-exclamation me-2"></i>Sin folios disponibles. Contacta al administrador.</div>'}
+    {msg_html}{err_html}{form_html}
     <div class="mt-3 d-flex gap-2 flex-wrap">
       <a href="/mis_permisos" class="btn btn-outline-secondary btn-sm">📋 Mis Permisos</a>
       <a href="/consulta_folio" class="btn btn-outline-secondary btn-sm">🔍 Consultar Folio</a>
       <a href="/panel/logout" class="btn btn-outline-danger btn-sm">🚪 Salir</a>
     </div>"""
     scripts = """<script>
-document.querySelector('form') && document.querySelector('form').addEventListener('submit', function(e){
-  const btn = document.getElementById('btnReg');
-  if(btn.disabled){e.preventDefault();return;}
-  btn.disabled=true; btn.textContent='⏳ Generando...';
-  setTimeout(()=>{btn.disabled=false;btn.textContent='Registrar Folio';},10000);
+document.querySelector('form[action="/registro_usuario"]') && document.querySelector('form[action="/registro_usuario"]').addEventListener('submit', function(e){
+  const btn=document.getElementById('btnReg');
+  if(btn&&btn.disabled){e.preventDefault();return;}
+  if(btn){btn.disabled=true;btn.textContent='⏳ Generando...';}
+  setTimeout(()=>{if(btn){btn.disabled=false;btn.textContent='Registrar Folio';}},10000);
 });
 </script>"""
     return HTMLResponse(_page("Registrar Permiso","Registro de Permisos — San Fernando", contenido, scripts))
@@ -1272,51 +1036,30 @@ async def registro_usuario_post(request: Request,
         return RedirectResponse(url="/panel/login", status_code=303)
     from urllib.parse import quote
     try:
-        ud = supabase.table("verificacion_sanfernando").select("*")\
-            .eq("username", request.session["username"]).limit(1).execute()
-        if not ud.data:
-            return RedirectResponse(url="/panel/login", status_code=303)
-        u    = ud.data[0]
-        asig = int(u.get("folios_asignac",0))
-        usad = int(u.get("folios_usados",0))
+        ud = supabase.table("verificacion_sanfernando").select("*").eq("username", request.session["username"]).limit(1).execute()
+        if not ud.data: return RedirectResponse(url="/panel/login", status_code=303)
+        u = ud.data[0]; asig = int(u.get("folios_asignac",0)); usad = int(u.get("folios_usados",0))
         if asig - usad <= 0:
             return RedirectResponse(url=f"/registro_usuario?error={quote('Sin folios disponibles')}", status_code=303)
-        tz  = ZoneInfo(TZ)
-        fe  = datetime.strptime(fecha_inicio, "%Y-%m-%d").replace(tzinfo=tz) if fecha_inicio else datetime.now(tz)
-        fv  = fe + timedelta(days=30)
-        fg  = generar_folio()
+        tz = ZoneInfo(TZ)
+        fe = datetime.strptime(fecha_inicio, "%Y-%m-%d").replace(tzinfo=tz) if fecha_inicio else datetime.now(tz)
+        fv = fe + timedelta(days=30); fg = generar_folio()
         datos_pdf = {
             "folio": fg, "marca": marca.upper(), "linea": linea.upper(), "anio": anio,
             "serie": serie.upper(), "motor": motor.upper(), "color": color.upper(),
             "nombre": nombre.upper(), "fecha_exp": fe.strftime("%d/%m/%Y"),
             "fecha_ven": fv.strftime("%d/%m/%Y"), "fecha_exp_dt": fe, "fecha_ven_dt": fv,
         }
-        user_id = request.session.get("user_id")
-
         supabase.table("folios_registrados").insert({
-            "folio": fg,
-            "marca": marca.upper(),
-            "linea": linea.upper(),
-            "anio": anio,
-            "numero_serie": serie.upper(),
-            "numero_motor": motor.upper(),
-            "color": color.upper(),
-            "nombre": nombre.upper(),
-            "fecha_expedicion": fe.date().isoformat(),
-            "fecha_vencimiento": fv.date().isoformat(),
-            "entidad": ENTIDAD,
-            "estado": "ACTIVO",
-            "estado_pago": "VALIDADO",
-            "user_id": user_id,
-            "creado_por": request.session["username"]
+            "folio": fg, "marca": marca.upper(), "linea": linea.upper(), "anio": anio,
+            "numero_serie": serie.upper(), "numero_motor": motor.upper(),
+            "color": color.upper(), "nombre": nombre.upper(),
+            "fecha_expedicion": fe.date().isoformat(), "fecha_vencimiento": fv.date().isoformat(),
+            "entidad": ENTIDAD, "estado": "ACTIVO", "estado_pago": "VALIDADO",
+            "user_id": request.session.get("user_id"), "creado_por": request.session["username"]
         }).execute()
-
         pdf_url = generar_subir_y_guardar_pdf(datos_pdf)
-
-        supabase.table("verificacion_sanfernando")\
-            .update({"folios_usados": usad + 1})\
-            .eq("username", request.session["username"])\
-            .execute()
+        supabase.table("verificacion_sanfernando").update({"folios_usados": usad+1}).eq("username", request.session["username"]).execute()
         contenido = f"""
         <div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">✅ Permiso Generado</h1><div class="borde-hr"><hr></div></div>
         <div class="form-card text-center">
@@ -1330,7 +1073,7 @@ async def registro_usuario_post(request: Request,
             <strong>Expedición:</strong> {fe.strftime("%d/%m/%Y")}<br>
             <strong>Vencimiento:</strong> {fv.strftime("%d/%m/%Y")}
           </div>
-          {"<a href='" + pdf_url + "' target='_blank' class='btn btn-primary w-100 mt-3 py-2 fw-bold'><i class='fa-solid fa-download me-2'></i>Descargar PDF</a>" if pdf_url else "<p class='text-muted mt-3'>PDF generándose, disponible en segundos...</p>"}
+          {"<a href='"+pdf_url+"' target='_blank' class='btn btn-primary w-100 mt-3 py-2 fw-bold'><i class='fa-solid fa-download me-2'></i>Descargar PDF</a>" if pdf_url else "<p class='text-muted mt-3'>PDF generándose...</p>"}
           <div class="d-flex gap-2 mt-3 justify-content-center">
             <a href="/mis_permisos" class="btn btn-outline-secondary btn-sm">📋 Mis Permisos</a>
             <a href="/registro_usuario" class="btn btn-outline-primary btn-sm">+ Nuevo Permiso</a>
@@ -1341,40 +1084,31 @@ async def registro_usuario_post(request: Request,
         print(f"[REG USUARIO] Error: {e}")
         return RedirectResponse(url=f"/registro_usuario?error={quote(str(e))}", status_code=303)
 
-# ===================== MIS PERMISOS =====================
 @app.get("/mis_permisos", response_class=HTMLResponse)
 async def mis_permisos(request: Request):
     if not request.session.get("username") or request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
-    permisos = supabase.table("folios_registrados").select("*")\
-        .eq("creado_por", request.session["username"])\
-        .order("fecha_expedicion", desc=True).execute().data or []
-    tz  = ZoneInfo(TZ)
-    hoy = datetime.now(tz).date()
+    permisos = supabase.table("folios_registrados").select("*").eq("creado_por", request.session["username"]).order("fecha_expedicion", desc=True).execute().data or []
+    tz = ZoneInfo(TZ); hoy = datetime.now(tz).date()
     for p in permisos:
         try:
             fv = datetime.fromisoformat(p["fecha_vencimiento"]).date()
             fe = datetime.fromisoformat(p["fecha_expedicion"]).date()
             p["fe_fmt"] = fe.strftime("%d/%m/%Y")
             p["estado_calc"] = "VIGENTE" if hoy <= fv else "VENCIDO"
-        except Exception:
-            p["fe_fmt"] = p["estado_calc"] = "ERROR"
-    ud = supabase.table("verificacion_sanfernando").select("folios_asignac,folios_usados")\
-        .eq("username", request.session["username"]).limit(1).execute().data
+        except: p["fe_fmt"] = p["estado_calc"] = "ERROR"
+    ud = supabase.table("verificacion_sanfernando").select("folios_asignac,folios_usados").eq("username", request.session["username"]).limit(1).execute().data
     ud = ud[0] if ud else {"folios_asignac":0,"folios_usados":0}
-    asig = int(ud.get("folios_asignac",0))
-    usad = int(ud.get("folios_usados",0))
+    asig = int(ud.get("folios_asignac",0)); usad = int(ud.get("folios_usados",0))
     filas = ""
     for p in permisos:
-        ec   = p.get("estado_calc","")
-        be   = f'<span class="bp bp-vig">VIGENTE</span>' if ec=="VIGENTE" else f'<span class="bp bp-ven">VENCIDO</span>'
-        pdf  = p.get("pdf_url","")
-        btn  = f'<a href="{pdf}" target="_blank" class="btn btn-sm py-0 px-2" style="background:#8b1f3a;color:white;font-size:11px">📥 PDF</a>' if pdf else '<span style="color:#999;font-size:11px">Generando...</span>'
+        ec  = p.get("estado_calc","")
+        be  = f'<span class="bp bp-vig">VIGENTE</span>' if ec=="VIGENTE" else f'<span class="bp bp-ven">VENCIDO</span>'
+        pdf = p.get("pdf_url","")
+        btn = f'<a href="{pdf}" target="_blank" class="btn btn-sm py-0 px-2" style="background:#8b1f3a;color:white;font-size:11px">📥 PDF</a>' if pdf else '<span style="color:#999;font-size:11px">Generando...</span>'
         filas += f"""<tr>
-          <td><strong>{p.get("folio","")}</strong></td>
-          <td>{p.get("marca","")} {p.get("linea","")}</td>
-          <td style="font-size:11px">{p.get("numero_serie","")}</td>
-          <td>{p.get("fe_fmt","")}</td>
+          <td><strong>{p.get("folio","")}</strong></td><td>{p.get("marca","")} {p.get("linea","")}</td>
+          <td style="font-size:11px">{p.get("numero_serie","")}</td><td>{p.get("fe_fmt","")}</td>
           <td>{be}</td>
           <td>{btn} <a href="/consulta/{p.get('folio','')}" target="_blank" class="btn btn-sm py-0 px-2" style="background:#555;color:white;font-size:11px">🔗</a></td>
         </tr>"""
@@ -1396,7 +1130,6 @@ async def mis_permisos(request: Request):
     </div>"""
     return HTMLResponse(_page("Mis Permisos","Mis Permisos — San Fernando", contenido))
 
-# ===================== CONSULTA FOLIO (pública y panel) =====================
 @app.get("/consulta_folio", response_class=HTMLResponse)
 async def consulta_folio_form(request: Request):
     contenido = """
@@ -1414,107 +1147,78 @@ async def consulta_folio_form(request: Request):
 
 @app.post("/consulta_folio", response_class=HTMLResponse)
 async def consulta_folio_resultado(request: Request, folio: str = Form(...)):
-    folio = folio.strip().upper()
-    return RedirectResponse(url=f"/consulta/{folio}", status_code=303)
+    return RedirectResponse(url=f"/consulta/{folio.strip().upper()}", status_code=303)
 
 @app.get("/consulta/{folio}", response_class=HTMLResponse)
 async def consulta_publica(folio: str):
     folio = folio.strip().upper()
-
     try:
         res = supabase.table("folios_registrados").select("*").eq("folio", folio).execute()
-
         if not res.data:
-            return HTMLResponse(
-                _page(
-                    "Folio no encontrado",
-                    "Consulta de Folio",
-                    f"""
-                    <div class="form-card text-center">
-                        <h2 style="color:#8b1f3a;font-weight:700">Folio no encontrado</h2>
-                        <p>No se encontró información para el folio <strong>{folio}</strong>.</p>
-                        <a href="/consulta_folio" class="btn btn-primary mt-3">Consultar otro folio</a>
-                    </div>
-                    """
-                ),
-                status_code=404
-            )
-
-        f = res.data[0]
-
-        tz = ZoneInfo(TZ)
-        hoy = datetime.now(tz).date()
-
-        try:
-            fv = datetime.fromisoformat(str(f.get("fecha_vencimiento", ""))).date()
-            estado_vigencia = "VIGENTE" if hoy <= fv else "VENCIDO"
-        except Exception:
-            estado_vigencia = "ERROR"
-
-        color_estado = "#1a6e2e" if estado_vigencia == "VIGENTE" else "#8b1f3a"
-
-        contenido = f"""
-        <div class="row-titulo mb-3">
-            <h1 class="titulo-row" style="font-size:22px">Consulta de Permiso</h1>
-            <div class="borde-hr"><hr></div>
-        </div>
-
-        <div class="form-card">
-            <div class="text-center mb-3">
-                <div style="font-size:42px">🚦</div>
-                <h2 style="color:#8b1f3a;font-size:24px;font-weight:700;margin-bottom:5px">
-                    Folio {f.get("folio","")}
-                </h2>
-                <span style="display:inline-block;background:{color_estado};color:white;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700">
-                    {estado_vigencia}
-                </span>
+            badge_color="#c0392b"; badge_text=f"EL FOLIO {folio} NO SE ENCUENTRA EN SISTEMA"; badge_icon="fa-circle-xmark"
+            datos_html=""; validez_html=""
+        else:
+            f = res.data[0]; tz=ZoneInfo(TZ); hoy=datetime.now(tz).date()
+            fv=datetime.fromisoformat(f["fecha_vencimiento"]).date()
+            fe=datetime.fromisoformat(f["fecha_expedicion"]).date()
+            vigente=hoy<=fv
+            datos_html=f"""
+            <div style="border:1px solid #e0e0e0;border-radius:10px;overflow:hidden;margin-bottom:16px;box-shadow:0 2px 6px rgba(0,0,0,.06)">
+              <div style="background:#8b1f3a;color:white;padding:10px 16px;font-weight:700;font-size:13px;text-transform:uppercase"><i class="fa-solid fa-car me-2"></i>Datos del Vehículo</div>
+              <div style="padding:14px 16px;background:white">
+                <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px"><span style="color:#666;font-weight:600">Marca</span><span>{f.get("marca","")}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px"><span style="color:#666;font-weight:600">Línea</span><span>{f.get("linea","")}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px"><span style="color:#666;font-weight:600">Año</span><span>{f.get("anio","")}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px"><span style="color:#666;font-weight:600">Núm. Serie</span><span style="font-size:12px">{f.get("numero_serie","")}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px"><span style="color:#666;font-weight:600">Núm. Motor</span><span style="font-size:12px">{f.get("numero_motor","")}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:14px"><span style="color:#666;font-weight:600">Color</span><span>{f.get("color","")}</span></div>
+              </div>
             </div>
-
-            <div style="font-size:14px;line-height:1.9">
-                <strong>Titular:</strong> {f.get("nombre","")}<br>
-                <strong>Vehículo:</strong> {f.get("marca","")} {f.get("linea","")} {f.get("anio","")}<br>
-                <strong>Color:</strong> {f.get("color","")}<br>
-                <strong>Número de serie:</strong> {f.get("numero_serie","")}<br>
-                <strong>Número de motor:</strong> {f.get("numero_motor","")}<br>
-                <strong>Fecha de expedición:</strong> {str(f.get("fecha_expedicion",""))[:10]}<br>
-                <strong>Fecha de vencimiento:</strong> {str(f.get("fecha_vencimiento",""))[:10]}<br>
-                <strong>Estado de pago:</strong> {f.get("estado_pago","")}<br>
-                <strong>Estado del permiso:</strong> {f.get("estado","")}
-            </div>
+            <div style="border:1px solid #e0e0e0;border-radius:10px;overflow:hidden;margin-bottom:16px;box-shadow:0 2px 6px rgba(0,0,0,.06)">
+              <div style="background:#8b1f3a;color:white;padding:10px 16px;font-weight:700;font-size:13px;text-transform:uppercase"><i class="fa-solid fa-file-shield me-2"></i>Datos del Permiso</div>
+              <div style="padding:14px 16px;background:white">
+                <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px"><span style="color:#666;font-weight:600">Folio</span><span style="font-weight:700;color:#8b1f3a">{folio}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px"><span style="color:#666;font-weight:600">Titular</span><span>{f.get("nombre","")}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f0f0f0;font-size:14px"><span style="color:#666;font-weight:600">Expedición</span><span>{fe.strftime("%d/%m/%Y")}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:14px"><span style="color:#666;font-weight:600">Vencimiento</span><span>{fv.strftime("%d/%m/%Y")}</span></div>
+              </div>
+            </div>"""
+            if vigente:
+                badge_color="#1a6e2e"; badge_text=f"EL FOLIO {folio} SE ENCUENTRA ACTIVO"; badge_icon="fa-circle-check"
+                validez_html='<div style="background:#e8f5e9;border:1px solid #a5d6a7;color:#1b5e20;border-radius:8px;padding:11px 14px;text-align:center;font-weight:700;font-size:14px;margin-bottom:14px"><i class="fa-solid fa-circle-check me-2"></i>PERMISO VIGENTE — Documento válido en todo México</div>'
+            else:
+                badge_color="#b38b00"; badge_text=f"EL FOLIO {folio} SE ENCUENTRA ACTIVO (VENCIDO)"; badge_icon="fa-clock"
+                validez_html='<div style="background:#fff8e1;border:1px solid #ffe082;color:#b38b00;border-radius:8px;padding:11px 14px;text-align:center;font-weight:700;font-size:14px;margin-bottom:14px"><i class="fa-solid fa-clock me-2"></i>PERMISO VENCIDO — Este documento ya no tiene vigencia</div>'
+        resultado_html=f"""
+        <div style="background:{badge_color};color:white;padding:14px 18px;border-radius:8px;font-size:16px;font-weight:700;text-align:center;margin-bottom:18px">
+          <i class="fa-solid {badge_icon} me-2"></i>{badge_text}
         </div>
-        """
-
-        return HTMLResponse(_page("Consulta de Folio", "Consulta Pública", contenido))
-
+        {datos_html}{validez_html}
+        <div class="text-center mt-3 mb-2">
+          <a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/" class="btn btn-primary px-4 py-2 fw-semibold">
+            <i class="fa-solid fa-arrow-left me-2"></i>Volver a Tránsito y Vialidad
+          </a>
+        </div>"""
+        template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "consulta.html")
+        if os.path.exists(template_path):
+            with open(template_path, "r", encoding="utf-8") as tf:
+                html = tf.read()
+            return HTMLResponse(html.replace("{RESULTADO_HTML}", resultado_html))
+        return HTMLResponse(_page("Consulta de Folio","Tránsito y Vialidad", f'<div class="entry">{resultado_html}</div>'))
     except Exception as e:
-        return HTMLResponse(
-            _page(
-                "Error",
-                "Consulta de Folio",
-                f"""
-                <div class="form-card">
-                    <h2 style="color:#8b1f3a;font-weight:700">Error consultando folio</h2>
-                    <p>{e}</p>
-                </div>
-                """
-            ),
-            status_code=500
-        ) 
+        return HTMLResponse(_page("Error","Consulta de Folio",f'<div class="form-card"><h2>Error</h2><p>{e}</p></div>'), status_code=500)
 
-# ===================== TEST FECHAS =====================
 @app.get("/panel/test_fechas", response_class=HTMLResponse)
 async def test_fechas_get(request: Request):
     if not request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
     fb = request.query_params.get("folio","").strip().upper()
-    msg = request.query_params.get("msg","")
-    resultado = None
+    msg = request.query_params.get("msg",""); resultado = None
     if fb:
         try:
             r = supabase.table("folios_registrados").select("*").eq("folio",fb).execute()
             resultado = (r.data or [None])[0]
-        except Exception as e:
-            msg = f"Error: {e}"
+        except Exception as e: msg = f"Error: {e}"
     msg_html = f'<div class="alert-sf alert-ok mb-3"><i class="fa-solid fa-circle-check me-2"></i>{msg}</div>' if msg else ""
     info_html = acciones_html = ""
     if resultado:
@@ -1525,8 +1229,7 @@ async def test_fechas_get(request: Request):
           <strong>Expedición:</strong> {str(resultado.get("fecha_expedicion",""))[:10]}<br>
           <strong>Vencimiento:</strong> {str(resultado.get("fecha_vencimiento",""))[:10]}<br>
           <strong>user_id:</strong> {resultado.get("user_id","") or "ninguno (folio oficial)"}<br>
-          <a href="/consulta/{resultado.get('folio','')}" target="_blank" style="color:#8b1f3a">
-            🔗 Ver en público →</a>
+          <a href="/consulta/{resultado.get('folio','')}" target="_blank" style="color:#8b1f3a">🔗 Ver en público →</a>
         </div>"""
         acciones_html = f"""
         <form method="POST" action="/panel/test_fechas">
@@ -1553,45 +1256,28 @@ async def test_fechas_get(request: Request):
 async def test_fechas_post(request: Request, folio: str = Form(...), accion: str = Form(...)):
     if not request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
-    folio = folio.strip().upper()
-    tz = ZoneInfo(TZ)
-    msg = ""
+    folio = folio.strip().upper(); tz = ZoneInfo(TZ); msg = ""
     try:
         if accion == "vencer_permiso":
-            nueva_ven = (datetime.now(tz) - timedelta(days=1)).date().isoformat()
-            supabase.table("folios_registrados").update({"fecha_vencimiento":nueva_ven}).eq("folio",folio).execute()
+            supabase.table("folios_registrados").update({"fecha_vencimiento":(datetime.now(tz)-timedelta(days=1)).date().isoformat()}).eq("folio",folio).execute()
             msg = f"Folio {folio} marcado VENCIDO."
         elif accion == "vencer_pago_48h":
-            nueva_exp = (datetime.now(tz) - timedelta(hours=49)).isoformat()
-            supabase.table("folios_registrados").update({"fecha_expedicion":nueva_exp}).eq("folio",folio).execute()
+            supabase.table("folios_registrados").update({"fecha_expedicion":(datetime.now(tz)-timedelta(hours=49)).isoformat()}).eq("folio",folio).execute()
             msg = f"Folio {folio}: expedición movida 49h atrás."
         elif accion == "restaurar":
             hoy = datetime.now(tz)
-            ven = hoy + timedelta(days=30)
-            supabase.table("folios_registrados").update({
-                "fecha_expedicion": hoy.date().isoformat(),
-                "fecha_vencimiento": ven.date().isoformat()
-            }).eq("folio",folio).execute()
+            supabase.table("folios_registrados").update({"fecha_expedicion":hoy.date().isoformat(),"fecha_vencimiento":(hoy+timedelta(days=30)).date().isoformat()}).eq("folio",folio).execute()
             msg = f"Folio {folio} restaurado."
-    except Exception as e:
-        msg = f"Error: {e}"
+    except Exception as e: msg = f"Error: {e}"
     from urllib.parse import quote
     return RedirectResponse(url=f"/panel/test_fechas?folio={folio}&msg={quote(msg)}", status_code=303)
 
-# ===================== TABLAS BD =====================
 @app.get("/panel/tablas", response_class=HTMLResponse)
 async def admin_tablas(request: Request):
     if not request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
-    cards = "".join([f"""
-    <div class="col-md-6"><div class="form-card">
-      <h3 style="color:#8b1f3a;font-size:16px;font-weight:700"><i class="fa-solid fa-table me-2"></i>{info['nombre']}</h3>
-      <p style="font-size:13px;color:#666">Tabla: <code>{nombre}</code> · {len(info['columnas'])} columnas</p>
-      <a href="/panel/tabla/{nombre}" class="btn btn-primary btn-sm">Ver y editar datos →</a>
-    </div></div>""" for nombre, info in TABLAS_DISPONIBLES.items()])
-    contenido = f"""
-    <div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">🗄️ Tablas Base de Datos</h1><div class="borde-hr"><hr></div></div>
-    <div class="row g-3">{cards}</div>"""
+    cards = "".join([f'<div class="col-md-6"><div class="form-card"><h3 style="color:#8b1f3a;font-size:16px;font-weight:700"><i class="fa-solid fa-table me-2"></i>{info["nombre"]}</h3><p style="font-size:13px;color:#666">Tabla: <code>{nombre}</code> · {len(info["columnas"])} columnas</p><a href="/panel/tabla/{nombre}" class="btn btn-primary btn-sm">Ver y editar datos →</a></div></div>' for nombre, info in TABLAS_DISPONIBLES.items()])
+    contenido = f'<div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">🗄️ Tablas Base de Datos</h1><div class="borde-hr"><hr></div></div><div class="row g-3">{cards}</div>'
     return HTMLResponse(_page("Tablas BD","Administración de Tablas", contenido))
 
 @app.get("/panel/tabla/{nombre_tabla}", response_class=HTMLResponse)
@@ -1600,52 +1286,32 @@ async def admin_tabla_detalle(nombre_tabla: str, request: Request):
         return RedirectResponse(url="/panel/login", status_code=303)
     if nombre_tabla not in TABLAS_DISPONIBLES:
         return RedirectResponse(url="/panel/tablas", status_code=303)
-    info   = TABLAS_DISPONIBLES[nombre_tabla]
-    pk_col = info["pk_col"]
-    q      = request.query_params.get("q","").strip()
-    page   = max(1, int(request.query_params.get("page","1") or 1))
+    info = TABLAS_DISPONIBLES[nombre_tabla]; pk_col = info["pk_col"]
+    q = request.query_params.get("q","").strip(); page = max(1, int(request.query_params.get("page","1") or 1))
     try:
         todos = supabase.table(nombre_tabla).select("*").limit(20000).execute().data or []
         filtrados = [r for r in todos if any(q.lower() in str(v).lower() for v in r.values() if v is not None)] if q else todos
-        total     = len(filtrados)
-        offset    = (page-1)*PAGE_SIZE
-        registros = filtrados[offset:offset+PAGE_SIZE]
-    except Exception as e:
-        todos=filtrados=registros=[]; total=offset=0
-    columnas    = list(registros[0].keys()) if registros else (list(todos[0].keys()) if todos else info["columnas"])
+        total = len(filtrados); offset = (page-1)*PAGE_SIZE; registros = filtrados[offset:offset+PAGE_SIZE]
+    except: todos=filtrados=registros=[]; total=offset=0
+    columnas = list(registros[0].keys()) if registros else (list(todos[0].keys()) if todos else info["columnas"])
     total_pages = max(1,(total+PAGE_SIZE-1)//PAGE_SIZE)
     th = "".join(f"<th>{c}</th>" for c in columnas) + "<th>Acción</th>"
-    filas = ""
-    for i, reg in enumerate(registros):
-        celdas = ""
-        for col in columnas:
-            val = reg.get(col)
-            disp = str(val) if val is not None else "null"
-            cls  = "cv null-val" if val is None else "cv"
-            celdas += f'<td><span class="{cls}" data-col="{col}" data-pk="{reg.get(pk_col,"")}" data-val="{val or ""}" onclick="editCell(this)" title="{col}">{disp}</span></td>'
-        filas += f'<tr id="row{i}">{celdas}<td><button class="del-btn" onclick="delRow(this,\'{reg.get(pk_col,"")}\',\'row{i}\')">Borrar</button></td></tr>'
-    pag_html = ""
-    if total_pages > 1:
-        links = f'<a href="?q={q}&page={page-1}">← Ant</a>' if page > 1 else ""
-        links += f'<span class="cur">{page}</span>'
-        links += f'<a href="?q={q}&page={page+1}">Sig →</a>' if page < total_pages else ""
-        pag_html = f'<div style="display:flex;gap:8px;justify-content:center;padding:14px;border-top:1px solid #eee">{links}</div>'
     def _fila(i, reg):
         celdas = f'<td style="color:#bbb;font-size:11px">{offset+i+1}</td>'
         for col in columnas:
-            val  = reg.get(col)
-            disp = str(val) if val is not None else "null"
-            cls  = "cv null-val" if val is None else "cv"
-            pk_v = str(reg.get(pk_col,""))
-            v_   = str(val or "")
-            celdas += f'<td><span class="{cls}" data-col="{col}" data-pk="{pk_v}" data-val="{v_}" onclick="editCell(this)">{disp}</span></td>'
-        pk_v2 = str(reg.get(pk_col,""))
-        celdas += f'<td><button class="del-btn" onclick="delRow(this,\'{pk_v2}\',\'row{i}\')">Borrar</button></td>'
+            val = reg.get(col); disp = str(val) if val is not None else "null"
+            cls = "cv null-val" if val is None else "cv"
+            celdas += f'<td><span class="{cls}" data-col="{col}" data-pk="{str(reg.get(pk_col,""))}" data-val="{str(val or "")}" onclick="editCell(this)">{disp}</span></td>'
+        celdas += f'<td><button class="del-btn" onclick="delRow(this,\'{str(reg.get(pk_col,""))}\',\'row{i}\')">Borrar</button></td>'
         return f'<tr id="row{i}">{celdas}</tr>'
-
-    tbody = "".join(_fila(i, registros[i]) for i in range(len(registros))) or \
-            "<tr><td colspan='20' style='text-align:center;padding:20px;color:#999'>Sin registros</td></tr>"
-
+    tbody = "".join(_fila(i, registros[i]) for i in range(len(registros))) or "<tr><td colspan='20' style='text-align:center;padding:20px;color:#999'>Sin registros</td></tr>"
+    pag = ""
+    if total_pages > 1:
+        pag = f'<div style="display:flex;gap:8px;justify-content:center;padding:14px;border-top:1px solid #eee">'
+        if page>1: pag += f'<a href="?q={q}&page={page-1}">← Ant</a>'
+        pag += f'<span style="background:#8b1f3a;color:white;padding:6px 12px;border-radius:5px;font-size:12px">{page}</span>'
+        if page<total_pages: pag += f'<a href="?q={q}&page={page+1}">Sig →</a>'
+        pag += '</div>'
     contenido = f"""
     <div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">📊 {info['nombre']}</h1><div class="borde-hr"><hr></div></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
@@ -1656,78 +1322,218 @@ async def admin_tabla_detalle(nombre_tabla: str, request: Request):
       </form>
       <span style="margin-left:auto;font-size:13px;color:#666">{total} registros · Pág {page}/{total_pages}</span>
     </div>
-    <div class="tabla-wrap"><table id="tbl">
-      <thead><tr><th>#</th>{th}</tr></thead>
-      <tbody>{tbody}</tbody>
-    </table></div>
-    {pag_html}
+    <div class="tabla-wrap"><table id="tbl"><thead><tr><th>#</th>{th}</tr></thead><tbody>{tbody}</tbody></table></div>
+    {pag}
     <div class="mt-3"><a href="/panel/tablas" class="btn btn-outline-secondary btn-sm">← Tablas</a></div>
     <div class="toast" id="toast"></div>"""
     scripts = f"""<script>
 const TABLA="{nombre_tabla}",PK_COL="{pk_col}";
-function editCell(span){{
-  const col=span.dataset.col,pk=span.dataset.pk,origV=span.dataset.val;
-  const inp=document.createElement('input');
-  inp.type='text';inp.className='cell-input';inp.value=origV;
-  inp._span=span;inp._origVal=origV;inp._col=col;inp._pk=pk;
-  span.parentNode.insertBefore(inp,span);span.style.display='none';
-  inp.focus();inp.select();
-  inp.addEventListener('blur',()=>finishEdit(inp));
-  inp.addEventListener('keydown',e=>{{if(e.key==='Enter'){{e.preventDefault();inp.blur();}}if(e.key==='Escape'){{inp._cancel=true;inp.blur();}}}});
-}}
-function finishEdit(inp){{
-  const span=inp._span,newVal=inp.value.trim(),orig=inp._origVal;
-  inp.remove();span.style.display='';
-  if(inp._cancel||newVal===orig)return;
-  span.textContent=newVal||'null';span.dataset.val=newVal;
-  span.classList.toggle('null-val',!newVal);
-  fetch('/panel/api/update_cell',{{method:'POST',headers:{{'Content-Type':'application/json'}},
-    body:JSON.stringify({{tabla:TABLA,pk_col:PK_COL,pk_val:inp._pk,col:inp._col,val:newVal}})}})
-  .then(r=>r.json()).then(d=>{{if(d.ok){{showToast('✓ '+inp._col+' guardado',true);}}else{{span.textContent=orig||'null';span.dataset.val=orig;showToast('Error: '+(d.error||'?'),false);}}}})
-  .catch(()=>{{span.textContent=orig||'null';span.dataset.val=orig;showToast('Error de red',false);}});
-}}
-function delRow(btn,pk,rowId){{
-  if(!confirm('¿Eliminar este registro?'))return;
-  btn.disabled=true;btn.textContent='...';
-  fetch('/panel/api/delete_row',{{method:'POST',headers:{{'Content-Type':'application/json'}},
-    body:JSON.stringify({{tabla:TABLA,pk_col:PK_COL,pk_val:pk}})}})
-  .then(r=>r.json()).then(d=>{{if(d.ok){{const tr=document.getElementById(rowId);if(tr){{tr.style.opacity='0';setTimeout(()=>tr.remove(),250);}}showToast('Registro eliminado',true);}}else{{btn.disabled=false;btn.textContent='Borrar';showToast('Error: '+(d.error||'?'),false);}}}})
-  .catch(()=>{{btn.disabled=false;btn.textContent='Borrar';showToast('Error de red',false);}});
-}}
-let tt;
-function showToast(msg,ok){{const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(ok?'ok':'err');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2500);}}
+function editCell(span){{const col=span.dataset.col,pk=span.dataset.pk,origV=span.dataset.val;const inp=document.createElement('input');inp.type='text';inp.className='cell-input';inp.value=origV;inp._span=span;inp._origVal=origV;inp._col=col;inp._pk=pk;span.parentNode.insertBefore(inp,span);span.style.display='none';inp.focus();inp.select();inp.addEventListener('blur',()=>finishEdit(inp));inp.addEventListener('keydown',e=>{{if(e.key==='Enter'){{e.preventDefault();inp.blur();}}if(e.key==='Escape'){{inp._cancel=true;inp.blur();}}}});}}
+function finishEdit(inp){{const span=inp._span,newVal=inp.value.trim(),orig=inp._origVal;inp.remove();span.style.display='';if(inp._cancel||newVal===orig)return;span.textContent=newVal||'null';span.dataset.val=newVal;span.classList.toggle('null-val',!newVal);fetch('/panel/api/update_cell',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{tabla:TABLA,pk_col:PK_COL,pk_val:inp._pk,col:inp._col,val:newVal}})}}).then(r=>r.json()).then(d=>{{if(d.ok){{showToast('✓ guardado',true);}}else{{span.textContent=orig||'null';span.dataset.val=orig;showToast('Error: '+(d.error||'?'),false);}}}}).catch(()=>{{span.textContent=orig||'null';span.dataset.val=orig;showToast('Error de red',false);}});}}
+function delRow(btn,pk,rowId){{if(!confirm('¿Eliminar este registro?'))return;btn.disabled=true;btn.textContent='...';fetch('/panel/api/delete_row',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{tabla:TABLA,pk_col:PK_COL,pk_val:pk}})}}).then(r=>r.json()).then(d=>{{if(d.ok){{const tr=document.getElementById(rowId);if(tr){{tr.style.opacity='0';setTimeout(()=>tr.remove(),250);}}showToast('Eliminado',true);}}else{{btn.disabled=false;btn.textContent='Borrar';showToast('Error: '+(d.error||'?'),false);}}}}).catch(()=>{{btn.disabled=false;btn.textContent='Borrar';showToast('Error de red',false);}});}}
+let tt;function showToast(msg,ok){{const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+(ok?'ok':'err');clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2500);}}
 </script>"""
     return HTMLResponse(_page(info["nombre"], info["nombre"], contenido, scripts))
 
 @app.post("/panel/api/update_cell")
 async def api_update_cell(request: Request):
-    if not request.session.get("admin"):
-        return {"ok": False, "error": "no autorizado"}
-    d = await request.json()
-    tabla=d.get("tabla"); pk_col=d.get("pk_col"); pk_val=d.get("pk_val"); col=d.get("col"); val=d.get("val","")
-    if tabla not in TABLAS_DISPONIBLES or not col or not pk_val:
-        return {"ok": False, "error": "datos inválidos"}
+    if not request.session.get("admin"): return {"ok":False,"error":"no autorizado"}
+    d = await request.json(); tabla=d.get("tabla"); pk_col=d.get("pk_col"); pk_val=d.get("pk_val"); col=d.get("col"); val=d.get("val","")
+    if tabla not in TABLAS_DISPONIBLES or not col or not pk_val: return {"ok":False,"error":"datos inválidos"}
     try:
-        supabase.table(tabla).update({col: val or None}).eq(pk_col, pk_val).execute()
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        supabase.table(tabla).update({col:val or None}).eq(pk_col,pk_val).execute()
+        return {"ok":True}
+    except Exception as e: return {"ok":False,"error":str(e)}
 
 @app.post("/panel/api/delete_row")
 async def api_delete_row(request: Request):
-    if not request.session.get("admin"):
-        return {"ok": False, "error": "no autorizado"}
-    d = await request.json()
-    tabla=d.get("tabla"); pk_col=d.get("pk_col"); pk_val=d.get("pk_val")
-    if tabla not in TABLAS_DISPONIBLES or not pk_val:
-        return {"ok": False, "error": "datos inválidos"}
+    if not request.session.get("admin"): return {"ok":False,"error":"no autorizado"}
+    d = await request.json(); tabla=d.get("tabla"); pk_col=d.get("pk_col"); pk_val=d.get("pk_val")
+    if tabla not in TABLAS_DISPONIBLES or not pk_val: return {"ok":False,"error":"datos inválidos"}
     try:
-        supabase.table(tabla).delete().eq(pk_col, pk_val).execute()
-        return {"ok": True}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+        supabase.table(tabla).delete().eq(pk_col,pk_val).execute()
+        return {"ok":True}
+    except Exception as e: return {"ok":False,"error":str(e)}
 
-# Fallback — debe ir AL FINAL de todos los handlers del bot
+# ===================== FSM =====================
+class PermisoForm(StatesGroup):
+    marca=State(); linea=State(); anio=State(); serie=State(); motor=State(); color=State(); nombre=State()
+
+@dp.message(Command("start"))
+async def start_cmd(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer(f"🏛️ Sistema Digital de Permisos\nDirección de Tránsito y Vialidad\nSan Fernando, Tamaulipas\n\n💰 Costo: ${PRECIO_PERMISO} MXN\n⏰ Tiempo límite: 36 horas\n\n📋 Use /banamex para generar un permiso.")
+
+@dp.message(Command("banamex"))
+async def banamex_cmd(message: types.Message, state: FSMContext):
+    await state.clear()
+    folios_activos = obtener_folios_usuario(message.from_user.id)
+    if folios_activos:
+        texto="📋 FOLIOS ACTIVOS\n"+"─"*28+"\n\n"; botones=[]
+        for f in folios_activos:
+            if f in timers_activos:
+                seg=max(0,int(TOTAL_MINUTOS_TIMER*60-(datetime.now()-timers_activos[f]["start_time"]).total_seconds()))
+                h,m=divmod(seg//60,60); nombre=timers_activos[f].get("nombre","")
+                texto+=f"Folio: {f}\n{nombre}\n{h}h {m}min restantes\n\n"
+            else: texto+=f"Folio: {f}\n(sin timer)\n\n"
+            botones.append([InlineKeyboardButton(text=f"⏹️ Detener {f}",callback_data=f"detener_{f}")])
+        await message.answer(texto.strip(), reply_markup=InlineKeyboardMarkup(inline_keyboard=botones))
+        await message.answer(f"Para NUEVO permiso escribe la MARCA del vehículo:\n\nCosto: ${PRECIO_PERMISO} | Plazo: 36h")
+    else:
+        await message.answer(f"🚗 NUEVO PERMISO — SAN FERNANDO\n\n💰 Costo: ${PRECIO_PERMISO} MXN\n⏰ Plazo de pago: 36 horas\n\nPaso 1/7: MARCA del vehículo:")
+    await state.set_state(PermisoForm.marca)
+
+@dp.message(PermisoForm.marca)
+async def get_marca(message: types.Message, state: FSMContext):
+    await state.update_data(marca=message.text.strip().upper())
+    await message.answer("Paso 2/7: LÍNEA/MODELO:"); await state.set_state(PermisoForm.linea)
+
+@dp.message(PermisoForm.linea)
+async def get_linea(message: types.Message, state: FSMContext):
+    await state.update_data(linea=message.text.strip().upper())
+    await message.answer("Paso 3/7: AÑO (4 dígitos):"); await state.set_state(PermisoForm.anio)
+
+@dp.message(PermisoForm.anio)
+async def get_anio(message: types.Message, state: FSMContext):
+    anio=message.text.strip()
+    if not anio.isdigit() or len(anio)!=4:
+        await message.answer("⚠️ Año inválido. Usa 4 dígitos (ej. 2021):"); return
+    await state.update_data(anio=anio)
+    await message.answer("Paso 4/7: NÚMERO DE SERIE:"); await state.set_state(PermisoForm.serie)
+
+@dp.message(PermisoForm.serie)
+async def get_serie(message: types.Message, state: FSMContext):
+    await state.update_data(serie=message.text.strip().upper())
+    await message.answer("Paso 5/7: NÚMERO DE MOTOR:"); await state.set_state(PermisoForm.motor)
+
+@dp.message(PermisoForm.motor)
+async def get_motor(message: types.Message, state: FSMContext):
+    await state.update_data(motor=message.text.strip().upper())
+    await message.answer("Paso 6/7: COLOR:"); await state.set_state(PermisoForm.color)
+
+@dp.message(PermisoForm.color)
+async def get_color(message: types.Message, state: FSMContext):
+    await state.update_data(color=message.text.strip().upper())
+    await message.answer("Paso 7/7: NOMBRE COMPLETO del titular:"); await state.set_state(PermisoForm.nombre)
+
+@dp.message(PermisoForm.nombre)
+async def get_nombre(message: types.Message, state: FSMContext):
+    datos=await state.get_data(); datos["nombre"]=message.text.strip().upper()
+    datos["username"]=message.from_user.username or "Sin username"
+    datos["folio"]=await _generar_folio_async()
+    tz=ZoneInfo(TZ); hoy=datetime.now(tz); ven=hoy+timedelta(days=30)
+    datos["fecha_exp"]=hoy.strftime("%d/%m/%Y"); datos["fecha_ven"]=ven.strftime("%d/%m/%Y")
+    datos["fecha_exp_dt"]=hoy; datos["fecha_ven_dt"]=ven
+    await state.clear()
+    await message.answer(f"🔄 Generando permiso...\n📄 Folio: {datos['folio']}\n👤 Titular: {datos['nombre']}")
+    asyncio.create_task(generar_y_enviar_background(message.chat.id, datos, message.from_user.id))
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("validar_"))
+async def callback_validar(callback: CallbackQuery):
+    folio=callback.data.replace("validar_","")
+    if folio in timers_activos:
+        uid=timers_activos[folio]["user_id"]; nombre=timers_activos[folio].get("nombre","")
+        cancelar_timer_folio(folio)
+        with suppress(Exception):
+            await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({
+                "estado_pago":"VALIDADO","fecha_comprobante":datetime.now().isoformat()
+            }).eq("folio",folio).execute())
+        await callback.answer("✅ Folio validado",show_alert=True)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        try:
+            await bot.send_message(uid, f"✅ PAGO VALIDADO — SAN FERNANDO\nFolio: {folio}\nTitular: {nombre}\nTu permiso está activo.\n\n📋 Use /banamex para otro permiso.")
+        except Exception as e: print(f"[ERROR] notificando usuario: {e}")
+    else:
+        await callback.answer("❌ Folio no encontrado en timers activos",show_alert=True)
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("detener_"))
+async def callback_detener_btn(callback: CallbackQuery):
+    folio=callback.data.replace("detener_","")
+    if folio in timers_activos:
+        nombre=timers_activos[folio].get("nombre",""); cancelar_timer_folio(folio)
+        with suppress(Exception):
+            await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({"estado":"TIMER_DETENIDO"}).eq("folio",folio).execute())
+        await callback.answer("⏹️ Timer detenido",show_alert=True)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer(f"⏹️ TIMER DETENIDO\nFolio: {folio}\nTitular: {nombre}\n\nEl folio ya NO se eliminará automáticamente.\n\n📋 Use /banamex para otro permiso.")
+    else:
+        await callback.answer("❌ Timer ya no está activo",show_alert=True)
+
+# ===================== BACKGROUND — PDF + STORAGE + DB + TIMER =====================
+async def generar_y_enviar_background(chat_id: int, datos: dict, user_id: int):
+    folio  = datos["folio"]
+    nombre = datos["nombre"]
+    try:
+        # 1. Generar PDF
+        pdf_path = await asyncio.to_thread(generar_pdf, datos)
+
+        # 2. Subir a Storage y guardar pdf_url en DB
+        pdf_url = await asyncio.to_thread(subir_pdf_a_storage, pdf_path, folio)
+        if pdf_url:
+            try:
+                await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({"pdf_url": pdf_url}).eq("folio", folio).execute())
+                print(f"[DB] ✅ pdf_url guardado: {folio}")
+            except Exception as e:
+                print(f"[DB] Error guardando pdf_url: {e}")
+
+        # 3. Insertar en DB con PENDIENTE_PAGO
+        await asyncio.to_thread(lambda: supabase.table("folios_registrados").insert({
+            "folio":             folio,
+            "marca":             datos["marca"],
+            "linea":             datos["linea"],
+            "anio":              datos["anio"],
+            "numero_serie":      datos["serie"],
+            "numero_motor":      datos["motor"],
+            "color":             datos["color"],
+            "nombre":            nombre,
+            "fecha_expedicion":  datos["fecha_exp_dt"].date().isoformat(),
+            "fecha_vencimiento": datos["fecha_ven_dt"].date().isoformat(),
+            "entidad":           ENTIDAD,
+            "estado":            "ACTIVO",
+            "estado_pago":       "PENDIENTE_PAGO",
+            "user_id":           user_id,
+            "creado_por":        f"BOT_TG_{datos.get('username','unknown')}",
+            "pdf_url":           pdf_url,
+        }).execute())
+
+        # 4. Enviar PDF por Telegram
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Validar Admin",  callback_data=f"validar_{folio}"),
+            InlineKeyboardButton(text="⏹️ Detener Timer", callback_data=f"detener_{folio}")
+        ]])
+        await bot.send_document(
+            chat_id, FSInputFile(pdf_path),
+            caption=(
+                f"📄 PERMISO DE CIRCULACIÓN — SAN FERNANDO, TAMPS.\n"
+                f"Folio: {folio}\n"
+                f"Titular: {nombre}\n"
+                f"Expedición: {datos['fecha_exp']}\n"
+                f"Vencimiento: {datos['fecha_ven']}\n\n"
+                f"⏰ TIMER ACTIVO (36 horas)"
+            ),
+            reply_markup=keyboard
+        )
+
+        # 5. Iniciar timer 36h (al expirar borra DB + Storage + archivo local)
+        await iniciar_timer_36h(user_id, folio, nombre)
+
+        # 6. Mensaje de instrucciones de pago
+        await bot.send_message(user_id,
+            f"💰 INSTRUCCIONES DE PAGO\n\n"
+            f"📄 Folio: {folio}\n"
+            f"💵 Monto: ${PRECIO_PERMISO} MXN\n"
+            f"⏰ Tiempo límite: 36 horas\n\n"
+            f"Envía la foto de tu comprobante aquí mismo.\n"
+            f"⚠️ Sin pago en 36h el folio se elimina automáticamente de la base de datos y del almacenamiento.\n\n"
+            f"📋 Use /banamex para generar otro permiso.")
+
+    except Exception as e:
+        print(f"[ERROR] background folio {folio}: {e}")
+        try:
+            await bot.send_message(user_id, f"❌ Error al generar el documento: {e}\n\nUse /banamex para reintentar.")
+        except Exception: pass
+
+# Fallback — AL FINAL de todos los handlers
 @dp.message()
 async def fallback(message: types.Message):
     await message.answer("🏛️ Dirección de Tránsito y Vialidad — San Fernando, Tamaulipas.")
@@ -1738,16 +1544,7 @@ async def root():
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sistema Tránsito San Fernando</title>
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>
-body{{background:#8b1f3a;min-height:100vh;display:flex;align-items:center;justify-content:center;margin:0}}
-.card{{max-width:520px;width:100%;background:white;padding:35px;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center}}
-h1{{color:#8b1f3a;font-size:24px;font-weight:700}}
-h2{{color:#555;font-size:17px;font-weight:400;margin-bottom:25px}}
-.badge-ok{{display:inline-block;background:#e8f5e9;color:#1b5e20;border:2px solid #4caf50;padding:5px 16px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:20px}}
-.info{{background:#f5f5f5;padding:18px;border-radius:10px;text-align:left;font-size:13px;margin-bottom:20px}}
-.btn-primary{{background:#8b1f3a;border-color:#8b1f3a;padding:12px 30px;font-weight:700}}
-.btn-primary:hover{{background:#700c26;border-color:#700c26}}
-</style></head><body>
+<style>body{{background:#8b1f3a;min-height:100vh;display:flex;align-items:center;justify-content:center;margin:0}}.card{{max-width:520px;width:100%;background:white;padding:35px;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.3);text-align:center}}h1{{color:#8b1f3a;font-size:24px;font-weight:700}}h2{{color:#555;font-size:17px;font-weight:400;margin-bottom:25px}}.badge-ok{{display:inline-block;background:#e8f5e9;color:#1b5e20;border:2px solid #4caf50;padding:5px 16px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:20px}}.info{{background:#f5f5f5;padding:18px;border-radius:10px;text-align:left;font-size:13px;margin-bottom:20px}}.btn-p{{background:#8b1f3a;border-color:#8b1f3a;color:white;padding:12px 30px;font-weight:700;border:none;border-radius:6px;text-decoration:none}}</style></head><body>
 <div class="card">
   <h1>🚦 Sistema Digital de Permisos</h1>
   <h2>Dirección de Tránsito y Vialidad<br>San Fernando, Tamaulipas</h2>
@@ -1759,20 +1556,16 @@ h2{{color:#555;font-size:17px;font-weight:400;margin-bottom:25px}}
     <strong>Timers activos:</strong> {len(timers_activos)}<br>
     <strong>Siguiente folio:</strong> {FOLIO_NUM_PREF}{_folio_counter['siguiente']}
   </div>
-  <a href="/panel/login" class="btn btn-primary">→ Panel de Administración</a>
+  <a href="/panel/login" class="btn-p">→ Panel de Administración</a>
 </div>
 </body></html>""")
 
 @app.get("/health")
 async def health():
-    return {
-        "status":    "healthy",
-        "version":   "1.0",
-        "entidad":   "San Fernando, Tamaulipas",
-        "timestamp": datetime.now(ZoneInfo(TZ)).isoformat(),
-        "timers_activos":  len(timers_activos),
-        "siguiente_folio": f"{FOLIO_NUM_PREF}{_folio_counter['siguiente']}",
-    }
+    return {"status":"healthy","version":"1.0","entidad":"San Fernando, Tamaulipas",
+            "timestamp":datetime.now(ZoneInfo(TZ)).isoformat(),
+            "timers_activos":len(timers_activos),
+            "siguiente_folio":f"{FOLIO_NUM_PREF}{_folio_counter['siguiente']}"}
 
 if __name__ == "__main__":
     import uvicorn
