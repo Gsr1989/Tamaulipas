@@ -356,7 +356,7 @@ def generar_pdf(datos: dict) -> str:
                 img_qr.save(buf, format="PNG")
                 buf.seek(0)
                 pg.insert_image(
-                    fitz.Rect(460, 480, 560, 580),
+                    fitz.Rect(460, 480, 360, 580),
                     pixmap=fitz.Pixmap(buf.read()),
                     overlay=True
                 )
