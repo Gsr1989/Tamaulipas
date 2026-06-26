@@ -317,34 +317,34 @@ def generar_pdf(datos: dict) -> str:
             pg  = doc[0]
 
             # ── FOLIO en rojo, arriba a la derecha ──
-            pg.insert_text((470, 95), str(folio),
+            pg.insert_text((500, 100), str(folio),
                            fontsize=13, fontname="hebo", color=(0.8, 0, 0))
 
             # ── FECHA: CD. SAN FERNANDO, TAM. A ___ DE ___ DEL ___ ──
-            pg.insert_text((180, 122), dia,  fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((238, 122), mes,  fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((346, 122), anio, fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((173, 120), dia,  fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((238, 120), mes,  fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((346, 120), anio, fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── TITULAR (AL C.) ──
             pg.insert_text((84, 188), str(datos.get("nombre", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── DOMICILIO línea 1 ──
-            pg.insert_text((260, 212), DOMICILIO_1,
+            pg.insert_text((265, 214), DOMICILIO_1,
                            fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── DOMICILIO línea 2 ──
-            pg.insert_text((260, 225), DOMICILIO_2,
+            pg.insert_text((260, 227), DOMICILIO_2,
                            fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── VEHÍCULO ──
-            pg.insert_text((250, 238), str(datos.get("marca", "")).upper(),
+            pg.insert_text((250, 240), str(datos.get("marca", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 251), str(datos.get("linea", "")).upper(),
+            pg.insert_text((240, 253), str(datos.get("linea", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 264), str(datos.get("color", "")).upper(),
+            pg.insert_text((240, 266), str(datos.get("color", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 277), str(datos.get("anio", "")),
+            pg.insert_text((240, 279), str(datos.get("anio", "")),
                            fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((260, 290), str(datos.get("serie", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
