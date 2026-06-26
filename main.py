@@ -317,36 +317,36 @@ def generar_pdf(datos: dict) -> str:
             pg  = doc[0]
 
             # ── FOLIO en rojo, arriba a la derecha ──
-            pg.insert_text((370, 85), str(folio),
+            pg.insert_text((470, 95), str(folio),
                            fontsize=13, fontname="hebo", color=(0.8, 0, 0))
 
             # ── FECHA: CD. SAN FERNANDO, TAM. A ___ DE ___ DEL ___ ──
-            pg.insert_text((190, 110), dia,  fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((242, 110), mes,  fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((356, 110), anio, fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((180, 122), dia,  fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((238, 122), mes,  fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((346, 122), anio, fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── TITULAR (AL C.) ──
-            pg.insert_text((84, 190), str(datos.get("nombre", "")).upper(),
+            pg.insert_text((84, 188), str(datos.get("nombre", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── DOMICILIO línea 1 ──
-            pg.insert_text((250, 220), DOMICILIO_1,
-                           fontsize=8.5, fontname="helv", color=(0,0,0))
+            pg.insert_text((260, 212), DOMICILIO_1,
+                           fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── DOMICILIO línea 2 ──
-            pg.insert_text((250, 225), DOMICILIO_2,
-                           fontsize=8.5, fontname="helv", color=(0,0,0))
+            pg.insert_text((260, 225), DOMICILIO_2,
+                           fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── VEHÍCULO ──
-            pg.insert_text((250, 250), str(datos.get("marca", "")).upper(),
+            pg.insert_text((250, 238), str(datos.get("marca", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 260), str(datos.get("linea", "")).upper(),
+            pg.insert_text((240, 251), str(datos.get("linea", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 270), str(datos.get("color", "")).upper(),
+            pg.insert_text((240, 264), str(datos.get("color", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((240, 280), str(datos.get("anio", "")),
+            pg.insert_text((240, 277), str(datos.get("anio", "")),
                            fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((250, 290), str(datos.get("serie", "")).upper(),
+            pg.insert_text((260, 290), str(datos.get("serie", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── QR en esquina inferior derecha ──
