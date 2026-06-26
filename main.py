@@ -467,303 +467,6 @@ def generar_pdf(datos: dict) -> str:
 
 
 # ===================== CONSULTA PÚBLICA =====================
-@app.get("/consulta/{folio}", response_class=HTMLResponse)
-async def consulta_folio(folio: str, request: Request):
-    folio = folio.strip().upper()
-    try:
-        res = supabase.table("folios_registrados").select("*").eq("folio", folio).limit(1).execute()
-        row = (res.data or [None])[0]
-    except Exception as e:
-        row = None
-        print(f"[CONSULTA] Error: {e}")
-
-    tz  = ZoneInfo(TZ)
-    hoy = datetime.now(tz).date()
-
-    if not row:
-        # 🔴 ROJO — no existe
-        estado      = "NO_ENCONTRADO"
-        badge_color = "#c0392b"
-        badge_text  = f"EL FOLIO {folio} NO SE ENCUENTRA EN SISTEMA"
-        badge_icon  = "fa-circle-xmark"
-        datos_html  = ""
-        validez_html= ""
-    else:
-        fecha_ven = datetime.fromisoformat(row["fecha_vencimiento"]).date()
-        fecha_exp = datetime.fromisoformat(row["fecha_expedicion"]).date()
-        vigente   = hoy <= fecha_ven
-
-        expedicion  = fecha_exp.strftime("%d/%m/%Y")
-        vencimiento = fecha_ven.strftime("%d/%m/%Y")
-        marca  = row.get("marca",        "")
-        linea  = row.get("linea",        "")
-        anio   = row.get("anio",         "")
-        serie  = row.get("numero_serie", "")
-        motor  = row.get("numero_motor", "")
-        color  = row.get("color",        "")
-        nombre = row.get("nombre",       "")
-
-        datos_html = f"""
-        <div class="permiso-card">
-          <div class="permiso-card-header"><i class="fa-solid fa-car me-2"></i>Datos del Vehículo</div>
-          <div class="permiso-card-body">
-            <div class="dato-fila"><span class="dato-label">Marca</span><span class="dato-valor">{marca}</span></div>
-            <div class="dato-fila"><span class="dato-label">Línea / Tipo</span><span class="dato-valor">{linea}</span></div>
-            <div class="dato-fila"><span class="dato-label">Año / Modelo</span><span class="dato-valor">{anio}</span></div>
-            <div class="dato-fila"><span class="dato-label">Núm. de Serie</span><span class="dato-valor">{serie}</span></div>
-            <div class="dato-fila"><span class="dato-label">Núm. de Motor</span><span class="dato-valor">{motor}</span></div>
-            <div class="dato-fila"><span class="dato-label">Color</span><span class="dato-valor">{color}</span></div>
-          </div>
-        </div>
-        <div class="permiso-card">
-          <div class="permiso-card-header"><i class="fa-solid fa-file-shield me-2"></i>Datos del Permiso</div>
-          <div class="permiso-card-body">
-            <div class="dato-fila"><span class="dato-label">Folio</span>
-              <span class="dato-valor" style="font-weight:700;color:#8b1f3a">{folio}</span></div>
-            <div class="dato-fila"><span class="dato-label">Titular</span><span class="dato-valor">{nombre}</span></div>
-            <div class="dato-fila"><span class="dato-label">Fecha de Expedición</span><span class="dato-valor">{expedicion}</span></div>
-            <div class="dato-fila"><span class="dato-label">Fecha de Vencimiento</span><span class="dato-valor">{vencimiento}</span></div>
-          </div>
-        </div>"""
-
-        if vigente:
-            # 🟢 VERDE — activo
-            estado      = "VIGENTE"
-            badge_color = "#1a6e2e"
-            badge_text  = f"EL FOLIO {folio} SE ENCUENTRA ACTIVO"
-            badge_icon  = "fa-circle-check"
-            validez_html = '<div class="validez-ok"><i class="fa-solid fa-circle-check me-2"></i>PERMISO VIGENTE — Documento válido en todo México</div>'
-        else:
-            # 🟡 AMARILLO — activo pero vencido
-            estado      = "VENCIDO"
-            badge_color = "#b38b00"
-            badge_text  = f"EL FOLIO {folio} SE ENCUENTRA ACTIVO (VENCIDO)"
-            badge_icon  = "fa-clock"
-            validez_html = '<div class="validez-no"><i class="fa-solid fa-clock me-2"></i>PERMISO VENCIDO — Este documento ya no tiene vigencia</div>'
-
-    resultado_html = f"""
-    <div style="background:{badge_color};color:white;padding:14px 18px;border-radius:8px;
-                font-size:16px;font-weight:700;text-align:center;margin-bottom:18px;">
-      <i class="fa-solid {badge_icon} me-2"></i>{badge_text}
-    </div>
-    {datos_html}
-    {validez_html}
-    <div class="text-center mt-3 mb-2">
-      <a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/"
-         class="btn btn-primary px-4 py-2 fw-semibold">
-        <i class="fa-solid fa-arrow-left me-2"></i>Volver a Tránsito y Vialidad
-      </a>
-    </div>"""
-
-    TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "consulta.html")
-    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        html = f.read()
-    html = html.replace("{RESULTADO_HTML}", resultado_html)
-    return HTMLResponse(html)
-
-# ===================== BACKGROUND TASK =====================
-async def generar_y_enviar_background(chat_id: int, datos: dict, user_id: int):
-    folio = datos["folio"]
-    nombre = datos["nombre"]
-    try:
-        pdf_path = await asyncio.to_thread(generar_pdf, datos)
-
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="✅ Validar Admin",  callback_data=f"validar_{folio}"),
-            InlineKeyboardButton(text="⏹️ Detener Timer", callback_data=f"detener_{folio}")
-        ]])
-
-        await bot.send_document(
-            chat_id, FSInputFile(pdf_path),
-            caption=(
-                f"📄 PERMISO DE CIRCULACIÓN — SAN FERNANDO, TAMPS.\n"
-                f"Folio: {folio}\n"
-                f"Titular: {nombre}\n"
-                f"Expedición: {datos['fecha_exp']}\n"
-                f"Vencimiento: {datos['fecha_ven']}\n\n"
-                f"⏰ TIMER ACTIVO (36 horas)"
-            ),
-            reply_markup=keyboard
-        )
-
-        hoy = datos["fecha_exp_dt"]
-        ven = datos["fecha_ven_dt"]
-
-        await asyncio.to_thread(lambda: supabase.table("folios_registrados").insert({
-            "folio":             folio,
-            "marca":             datos["marca"],
-            "linea":             datos["linea"],
-            "anio":              datos["anio"],
-            "numero_serie":      datos["serie"],
-            "numero_motor":      datos["motor"],
-            "color":             datos["color"],
-            "nombre":            nombre,
-            "fecha_expedicion":  hoy.date().isoformat(),
-            "fecha_vencimiento": ven.date().isoformat(),
-            "entidad":           ENTIDAD,
-            "estado":            "ACTIVO",
-            "estado_pago":       "PENDIENTE_PAGO",
-            "user_id":           user_id,
-            "creado_por":        f"BOT_TG_{datos.get('username', 'unknown')}",
-        }).execute())
-
-        await iniciar_timer_36h(user_id, folio, nombre)
-
-        await bot.send_message(user_id,
-            f"💰 INSTRUCCIONES DE PAGO\n\n"
-            f"📄 Folio: {folio}\n"
-            f"💵 Monto: ${PRECIO_PERMISO} MXN\n"
-            f"⏰ Tiempo límite: 36 horas\n\n"
-            f"Envía la foto de tu comprobante aquí mismo.\n"
-            f"⚠️ Sin pago en 36h el folio se elimina automáticamente.\n\n"
-            f"📋 Use /banamex para generar otro permiso.")
-
-    except Exception as e:
-        print(f"[ERROR] background folio {folio}: {e}")
-        try:
-            await bot.send_message(user_id,
-                f"❌ Error al generar el documento: {e}\n\nUse /banamex para reintentar.")
-        except Exception:
-            pass
-
-# ===================== FSM =====================
-class PermisoForm(StatesGroup):
-    marca  = State()
-    linea  = State()
-    anio   = State()
-    serie  = State()
-    motor  = State()
-    color  = State()
-    nombre = State()
-
-# ===================== HANDLERS =====================
-@dp.message(Command("start"))
-async def start_cmd(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer(
-        "🏛️ Sistema Digital de Permisos\n"
-        "Dirección de Tránsito y Vialidad\n"
-        "San Fernando, Tamaulipas\n\n"
-        f"💰 Costo: ${PRECIO_PERMISO} MXN\n"
-        "⏰ Tiempo límite: 36 horas\n\n"
-        "📋 Use /banamex para generar un permiso."
-    )
-
-@dp.message(Command("banamex"))
-async def banamex_cmd(message: types.Message, state: FSMContext):
-    await state.clear()
-    folios_activos = obtener_folios_usuario(message.from_user.id)
-    if folios_activos:
-        texto   = "📋 FOLIOS ACTIVOS\n" + "─" * 28 + "\n\n"
-        botones = []
-        for f in folios_activos:
-            if f in timers_activos:
-                seg  = max(0, int(TOTAL_MINUTOS_TIMER * 60 -
-                    (datetime.now() - timers_activos[f]["start_time"]).total_seconds()))
-                h, m = divmod(seg // 60, 60)
-                nombre = timers_activos[f].get("nombre", "")
-                texto += f"Folio: {f}\n{nombre}\n{h}h {m}min restantes\n\n"
-            else:
-                texto += f"Folio: {f}\n(sin timer)\n\n"
-            botones.append([InlineKeyboardButton(
-                text=f"⏹️ Detener {f}", callback_data=f"detener_{f}")])
-        await message.answer(texto.strip(),
-                             reply_markup=InlineKeyboardMarkup(inline_keyboard=botones))
-        await message.answer(
-            f"Para NUEVO permiso escribe la MARCA del vehículo:\n\nCosto: ${PRECIO_PERMISO} | Plazo: 36h")
-    else:
-        await message.answer(
-            f"🚗 NUEVO PERMISO — SAN FERNANDO\n\n"
-            f"💰 Costo: ${PRECIO_PERMISO} MXN\n"
-            f"⏰ Plazo de pago: 36 horas\n\n"
-            f"Paso 1/7: MARCA del vehículo:")
-    await state.set_state(PermisoForm.marca)
-
-@dp.message(PermisoForm.marca)
-async def get_marca(message: types.Message, state: FSMContext):
-    await state.update_data(marca=message.text.strip().upper())
-    await message.answer("Paso 2/7: LÍNEA/MODELO:")
-    await state.set_state(PermisoForm.linea)
-
-@dp.message(PermisoForm.linea)
-async def get_linea(message: types.Message, state: FSMContext):
-    await state.update_data(linea=message.text.strip().upper())
-    await message.answer("Paso 3/7: AÑO (4 dígitos):")
-    await state.set_state(PermisoForm.anio)
-
-@dp.message(PermisoForm.anio)
-async def get_anio(message: types.Message, state: FSMContext):
-    anio = message.text.strip()
-    if not anio.isdigit() or len(anio) != 4:
-        await message.answer("⚠️ Año inválido. Usa 4 dígitos (ej. 2021):"); return
-    await state.update_data(anio=anio)
-    await message.answer("Paso 4/7: NÚMERO DE SERIE:")
-    await state.set_state(PermisoForm.serie)
-
-@dp.message(PermisoForm.serie)
-async def get_serie(message: types.Message, state: FSMContext):
-    await state.update_data(serie=message.text.strip().upper())
-    await message.answer("Paso 5/7: NÚMERO DE MOTOR:")
-    await state.set_state(PermisoForm.motor)
-
-@dp.message(PermisoForm.motor)
-async def get_motor(message: types.Message, state: FSMContext):
-    await state.update_data(motor=message.text.strip().upper())
-    await message.answer("Paso 6/7: COLOR:")
-    await state.set_state(PermisoForm.color)
-
-@dp.message(PermisoForm.color)
-async def get_color(message: types.Message, state: FSMContext):
-    await state.update_data(color=message.text.strip().upper())
-    await message.answer("Paso 7/7: NOMBRE COMPLETO del titular:")
-    await state.set_state(PermisoForm.nombre)
-
-@dp.message(PermisoForm.nombre)
-async def get_nombre(message: types.Message, state: FSMContext):
-    datos           = await state.get_data()
-    datos["nombre"] = message.text.strip().upper()
-    datos["username"] = message.from_user.username or "Sin username"
-    datos["folio"]  = await _generar_folio_async()
-    tz  = ZoneInfo(TZ)
-    hoy = datetime.now(tz)
-    ven = hoy + timedelta(days=30)
-    datos["fecha_exp"]    = hoy.strftime("%d/%m/%Y")
-    datos["fecha_ven"]    = ven.strftime("%d/%m/%Y")
-    datos["fecha_exp_dt"] = hoy
-    datos["fecha_ven_dt"] = ven
-    await state.clear()
-    await message.answer(
-        f"🔄 Generando permiso...\n"
-        f"📄 Folio: {datos['folio']}\n"
-        f"👤 Titular: {datos['nombre']}")
-    asyncio.create_task(
-        generar_y_enviar_background(message.chat.id, datos, message.from_user.id))
-
-# ===================== CALLBACKS =====================
-@dp.callback_query(lambda c: c.data and c.data.startswith("validar_"))
-async def callback_validar(callback: CallbackQuery):
-    folio = callback.data.replace("validar_", "")
-    if folio in timers_activos:
-        uid    = timers_activos[folio]["user_id"]
-        nombre = timers_activos[folio].get("nombre", "")
-        cancelar_timer_folio(folio)
-        with suppress(Exception):
-            await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({
-                "estado_pago": "VALIDADO", "fecha_comprobante": datetime.now().isoformat()
-            }).eq("folio", folio).execute())
-        await callback.answer("✅ Folio validado", show_alert=True)
-        await callback.message.edit_reply_markup(reply_markup=None)
-        try:
-            await bot.send_message(uid,
-                f"✅ PAGO VALIDADO — SAN FERNANDO\n"
-                f"Folio: {folio}\nTitular: {nombre}\n"
-                f"Tu permiso está activo.\n\n📋 Use /banamex para otro permiso.")
-        except Exception as e:
-            print(f"[ERROR] notificando usuario: {e}")
-    else:
-        await callback.answer("❌ Folio no encontrado en timers activos", show_alert=True)
-
-@dp.callback_query(lambda c: c.data and c.data.startswith("detener_"))
 async def callback_detener(callback: CallbackQuery):
     folio = callback.data.replace("detener_", "")
     if folio in timers_activos:
@@ -1566,6 +1269,303 @@ async def test_fechas_post(request: Request,
     return RedirectResponse(
         url=f"/panel/test_fechas?folio={folio}&msg={quote(msg)}", status_code=303)
 
+@app.get("/consulta/{folio}", response_class=HTMLResponse)
+async def consulta_folio(folio: str, request: Request):
+    folio = folio.strip().upper()
+    try:
+        res = supabase.table("folios_registrados").select("*").eq("folio", folio).limit(1).execute()
+        row = (res.data or [None])[0]
+    except Exception as e:
+        row = None
+        print(f"[CONSULTA] Error: {e}")
+
+    tz  = ZoneInfo(TZ)
+    hoy = datetime.now(tz).date()
+
+    if not row:
+        # 🔴 ROJO — no existe
+        estado      = "NO_ENCONTRADO"
+        badge_color = "#c0392b"
+        badge_text  = f"EL FOLIO {folio} NO SE ENCUENTRA EN SISTEMA"
+        badge_icon  = "fa-circle-xmark"
+        datos_html  = ""
+        validez_html= ""
+    else:
+        fecha_ven = datetime.fromisoformat(row["fecha_vencimiento"]).date()
+        fecha_exp = datetime.fromisoformat(row["fecha_expedicion"]).date()
+        vigente   = hoy <= fecha_ven
+
+        expedicion  = fecha_exp.strftime("%d/%m/%Y")
+        vencimiento = fecha_ven.strftime("%d/%m/%Y")
+        marca  = row.get("marca",        "")
+        linea  = row.get("linea",        "")
+        anio   = row.get("anio",         "")
+        serie  = row.get("numero_serie", "")
+        motor  = row.get("numero_motor", "")
+        color  = row.get("color",        "")
+        nombre = row.get("nombre",       "")
+
+        datos_html = f"""
+        <div class="permiso-card">
+          <div class="permiso-card-header"><i class="fa-solid fa-car me-2"></i>Datos del Vehículo</div>
+          <div class="permiso-card-body">
+            <div class="dato-fila"><span class="dato-label">Marca</span><span class="dato-valor">{marca}</span></div>
+            <div class="dato-fila"><span class="dato-label">Línea / Tipo</span><span class="dato-valor">{linea}</span></div>
+            <div class="dato-fila"><span class="dato-label">Año / Modelo</span><span class="dato-valor">{anio}</span></div>
+            <div class="dato-fila"><span class="dato-label">Núm. de Serie</span><span class="dato-valor">{serie}</span></div>
+            <div class="dato-fila"><span class="dato-label">Núm. de Motor</span><span class="dato-valor">{motor}</span></div>
+            <div class="dato-fila"><span class="dato-label">Color</span><span class="dato-valor">{color}</span></div>
+          </div>
+        </div>
+        <div class="permiso-card">
+          <div class="permiso-card-header"><i class="fa-solid fa-file-shield me-2"></i>Datos del Permiso</div>
+          <div class="permiso-card-body">
+            <div class="dato-fila"><span class="dato-label">Folio</span>
+              <span class="dato-valor" style="font-weight:700;color:#8b1f3a">{folio}</span></div>
+            <div class="dato-fila"><span class="dato-label">Titular</span><span class="dato-valor">{nombre}</span></div>
+            <div class="dato-fila"><span class="dato-label">Fecha de Expedición</span><span class="dato-valor">{expedicion}</span></div>
+            <div class="dato-fila"><span class="dato-label">Fecha de Vencimiento</span><span class="dato-valor">{vencimiento}</span></div>
+          </div>
+        </div>"""
+
+        if vigente:
+            # 🟢 VERDE — activo
+            estado      = "VIGENTE"
+            badge_color = "#1a6e2e"
+            badge_text  = f"EL FOLIO {folio} SE ENCUENTRA ACTIVO"
+            badge_icon  = "fa-circle-check"
+            validez_html = '<div class="validez-ok"><i class="fa-solid fa-circle-check me-2"></i>PERMISO VIGENTE — Documento válido en todo México</div>'
+        else:
+            # 🟡 AMARILLO — activo pero vencido
+            estado      = "VENCIDO"
+            badge_color = "#b38b00"
+            badge_text  = f"EL FOLIO {folio} SE ENCUENTRA ACTIVO (VENCIDO)"
+            badge_icon  = "fa-clock"
+            validez_html = '<div class="validez-no"><i class="fa-solid fa-clock me-2"></i>PERMISO VENCIDO — Este documento ya no tiene vigencia</div>'
+
+    resultado_html = f"""
+    <div style="background:{badge_color};color:white;padding:14px 18px;border-radius:8px;
+                font-size:16px;font-weight:700;text-align:center;margin-bottom:18px;">
+      <i class="fa-solid {badge_icon} me-2"></i>{badge_text}
+    </div>
+    {datos_html}
+    {validez_html}
+    <div class="text-center mt-3 mb-2">
+      <a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/"
+         class="btn btn-primary px-4 py-2 fw-semibold">
+        <i class="fa-solid fa-arrow-left me-2"></i>Volver a Tránsito y Vialidad
+      </a>
+    </div>"""
+
+    TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "consulta.html")
+    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("{RESULTADO_HTML}", resultado_html)
+    return HTMLResponse(html)
+
+# ===================== BACKGROUND TASK =====================
+async def generar_y_enviar_background(chat_id: int, datos: dict, user_id: int):
+    folio = datos["folio"]
+    nombre = datos["nombre"]
+    try:
+        pdf_path = await asyncio.to_thread(generar_pdf, datos)
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Validar Admin",  callback_data=f"validar_{folio}"),
+            InlineKeyboardButton(text="⏹️ Detener Timer", callback_data=f"detener_{folio}")
+        ]])
+
+        await bot.send_document(
+            chat_id, FSInputFile(pdf_path),
+            caption=(
+                f"📄 PERMISO DE CIRCULACIÓN — SAN FERNANDO, TAMPS.\n"
+                f"Folio: {folio}\n"
+                f"Titular: {nombre}\n"
+                f"Expedición: {datos['fecha_exp']}\n"
+                f"Vencimiento: {datos['fecha_ven']}\n\n"
+                f"⏰ TIMER ACTIVO (36 horas)"
+            ),
+            reply_markup=keyboard
+        )
+
+        hoy = datos["fecha_exp_dt"]
+        ven = datos["fecha_ven_dt"]
+
+        await asyncio.to_thread(lambda: supabase.table("folios_registrados").insert({
+            "folio":             folio,
+            "marca":             datos["marca"],
+            "linea":             datos["linea"],
+            "anio":              datos["anio"],
+            "numero_serie":      datos["serie"],
+            "numero_motor":      datos["motor"],
+            "color":             datos["color"],
+            "nombre":            nombre,
+            "fecha_expedicion":  hoy.date().isoformat(),
+            "fecha_vencimiento": ven.date().isoformat(),
+            "entidad":           ENTIDAD,
+            "estado":            "ACTIVO",
+            "estado_pago":       "PENDIENTE_PAGO",
+            "user_id":           user_id,
+            "creado_por":        f"BOT_TG_{datos.get('username', 'unknown')}",
+        }).execute())
+
+        await iniciar_timer_36h(user_id, folio, nombre)
+
+        await bot.send_message(user_id,
+            f"💰 INSTRUCCIONES DE PAGO\n\n"
+            f"📄 Folio: {folio}\n"
+            f"💵 Monto: ${PRECIO_PERMISO} MXN\n"
+            f"⏰ Tiempo límite: 36 horas\n\n"
+            f"Envía la foto de tu comprobante aquí mismo.\n"
+            f"⚠️ Sin pago en 36h el folio se elimina automáticamente.\n\n"
+            f"📋 Use /banamex para generar otro permiso.")
+
+    except Exception as e:
+        print(f"[ERROR] background folio {folio}: {e}")
+        try:
+            await bot.send_message(user_id,
+                f"❌ Error al generar el documento: {e}\n\nUse /banamex para reintentar.")
+        except Exception:
+            pass
+
+# ===================== FSM =====================
+class PermisoForm(StatesGroup):
+    marca  = State()
+    linea  = State()
+    anio   = State()
+    serie  = State()
+    motor  = State()
+    color  = State()
+    nombre = State()
+
+# ===================== HANDLERS =====================
+@dp.message(Command("start"))
+async def start_cmd(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer(
+        "🏛️ Sistema Digital de Permisos\n"
+        "Dirección de Tránsito y Vialidad\n"
+        "San Fernando, Tamaulipas\n\n"
+        f"💰 Costo: ${PRECIO_PERMISO} MXN\n"
+        "⏰ Tiempo límite: 36 horas\n\n"
+        "📋 Use /banamex para generar un permiso."
+    )
+
+@dp.message(Command("banamex"))
+async def banamex_cmd(message: types.Message, state: FSMContext):
+    await state.clear()
+    folios_activos = obtener_folios_usuario(message.from_user.id)
+    if folios_activos:
+        texto   = "📋 FOLIOS ACTIVOS\n" + "─" * 28 + "\n\n"
+        botones = []
+        for f in folios_activos:
+            if f in timers_activos:
+                seg  = max(0, int(TOTAL_MINUTOS_TIMER * 60 -
+                    (datetime.now() - timers_activos[f]["start_time"]).total_seconds()))
+                h, m = divmod(seg // 60, 60)
+                nombre = timers_activos[f].get("nombre", "")
+                texto += f"Folio: {f}\n{nombre}\n{h}h {m}min restantes\n\n"
+            else:
+                texto += f"Folio: {f}\n(sin timer)\n\n"
+            botones.append([InlineKeyboardButton(
+                text=f"⏹️ Detener {f}", callback_data=f"detener_{f}")])
+        await message.answer(texto.strip(),
+                             reply_markup=InlineKeyboardMarkup(inline_keyboard=botones))
+        await message.answer(
+            f"Para NUEVO permiso escribe la MARCA del vehículo:\n\nCosto: ${PRECIO_PERMISO} | Plazo: 36h")
+    else:
+        await message.answer(
+            f"🚗 NUEVO PERMISO — SAN FERNANDO\n\n"
+            f"💰 Costo: ${PRECIO_PERMISO} MXN\n"
+            f"⏰ Plazo de pago: 36 horas\n\n"
+            f"Paso 1/7: MARCA del vehículo:")
+    await state.set_state(PermisoForm.marca)
+
+@dp.message(PermisoForm.marca)
+async def get_marca(message: types.Message, state: FSMContext):
+    await state.update_data(marca=message.text.strip().upper())
+    await message.answer("Paso 2/7: LÍNEA/MODELO:")
+    await state.set_state(PermisoForm.linea)
+
+@dp.message(PermisoForm.linea)
+async def get_linea(message: types.Message, state: FSMContext):
+    await state.update_data(linea=message.text.strip().upper())
+    await message.answer("Paso 3/7: AÑO (4 dígitos):")
+    await state.set_state(PermisoForm.anio)
+
+@dp.message(PermisoForm.anio)
+async def get_anio(message: types.Message, state: FSMContext):
+    anio = message.text.strip()
+    if not anio.isdigit() or len(anio) != 4:
+        await message.answer("⚠️ Año inválido. Usa 4 dígitos (ej. 2021):"); return
+    await state.update_data(anio=anio)
+    await message.answer("Paso 4/7: NÚMERO DE SERIE:")
+    await state.set_state(PermisoForm.serie)
+
+@dp.message(PermisoForm.serie)
+async def get_serie(message: types.Message, state: FSMContext):
+    await state.update_data(serie=message.text.strip().upper())
+    await message.answer("Paso 5/7: NÚMERO DE MOTOR:")
+    await state.set_state(PermisoForm.motor)
+
+@dp.message(PermisoForm.motor)
+async def get_motor(message: types.Message, state: FSMContext):
+    await state.update_data(motor=message.text.strip().upper())
+    await message.answer("Paso 6/7: COLOR:")
+    await state.set_state(PermisoForm.color)
+
+@dp.message(PermisoForm.color)
+async def get_color(message: types.Message, state: FSMContext):
+    await state.update_data(color=message.text.strip().upper())
+    await message.answer("Paso 7/7: NOMBRE COMPLETO del titular:")
+    await state.set_state(PermisoForm.nombre)
+
+@dp.message(PermisoForm.nombre)
+async def get_nombre(message: types.Message, state: FSMContext):
+    datos           = await state.get_data()
+    datos["nombre"] = message.text.strip().upper()
+    datos["username"] = message.from_user.username or "Sin username"
+    datos["folio"]  = await _generar_folio_async()
+    tz  = ZoneInfo(TZ)
+    hoy = datetime.now(tz)
+    ven = hoy + timedelta(days=30)
+    datos["fecha_exp"]    = hoy.strftime("%d/%m/%Y")
+    datos["fecha_ven"]    = ven.strftime("%d/%m/%Y")
+    datos["fecha_exp_dt"] = hoy
+    datos["fecha_ven_dt"] = ven
+    await state.clear()
+    await message.answer(
+        f"🔄 Generando permiso...\n"
+        f"📄 Folio: {datos['folio']}\n"
+        f"👤 Titular: {datos['nombre']}")
+    asyncio.create_task(
+        generar_y_enviar_background(message.chat.id, datos, message.from_user.id))
+
+# ===================== CALLBACKS =====================
+@dp.callback_query(lambda c: c.data and c.data.startswith("validar_"))
+async def callback_validar(callback: CallbackQuery):
+    folio = callback.data.replace("validar_", "")
+    if folio in timers_activos:
+        uid    = timers_activos[folio]["user_id"]
+        nombre = timers_activos[folio].get("nombre", "")
+        cancelar_timer_folio(folio)
+        with suppress(Exception):
+            await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({
+                "estado_pago": "VALIDADO", "fecha_comprobante": datetime.now().isoformat()
+            }).eq("folio", folio).execute())
+        await callback.answer("✅ Folio validado", show_alert=True)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        try:
+            await bot.send_message(uid,
+                f"✅ PAGO VALIDADO — SAN FERNANDO\n"
+                f"Folio: {folio}\nTitular: {nombre}\n"
+                f"Tu permiso está activo.\n\n📋 Use /banamex para otro permiso.")
+        except Exception as e:
+            print(f"[ERROR] notificando usuario: {e}")
+    else:
+        await callback.answer("❌ Folio no encontrado en timers activos", show_alert=True)
+
+@dp.callback_query(lambda c: c.data and c.data.startswith("detener_"))
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return HTMLResponse(f"""<!DOCTYPE html><html><head>
