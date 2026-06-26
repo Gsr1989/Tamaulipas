@@ -250,60 +250,316 @@ def generar_qr(folio: str):
         print(f"[QR] Error: {e}")
         return None, None
 
+
+# ===================== QR / PDF =====================
+def generar_qr(folio: str):
+    try:
+        url = f"{BASE_URL}/consulta/{folio}"
+        qr  = qrcode.QRCode(version=2,
+                             error_correction=qrcode.constants.ERROR_CORRECT_M,
+                             box_size=4, border=1)
+        qr.add_data(url); qr.make(fit=True)
+        return qr.make_image(fill_color="black", back_color="white").convert("RGB"), url
+    except Exception as e:
+        print(f"[QR] Error: {e}")
+        return None, None
+
 def generar_pdf(datos: dict) -> str:
+    """
+    Llena la plantilla Sanfer.pdf con los datos del permiso.
+    Hoja carta vertical (612 x 792 pts).
+
+    Campos de la plantilla:
+    ─────────────────────────────────────────────────────────────
+    FOLIO             → arriba derecha, en ROJO
+    Fecha             → CD. SAN FERNANDO, TAM. A [dia] DE [mes] DEL [año]
+    Titular (AL C.)   → nombre completo
+    Domicilio línea 1 → Calle Hidalgo Sin Número, entre Calle Juárez y Calle Escandón
+    Domicilio línea 2 → Zona Centro, C.P 87600. San Fernando, Tamps.
+    Marca             → AL VEHÍCULO MARCA:
+    Tipo/Línea        → TIPO:
+    Color             → COLOR:
+    Modelo/Año        → MODELO:
+    Núm. Serie        → NUMERO DE SERIE:
+    QR                → esquina inferior derecha
+    """
     folio = datos["folio"]
     out   = os.path.join(OUTPUT_DIR, f"{folio}.pdf")
+
+    # Parsear fecha de expedición
+    tz  = ZoneInfo(TZ)
     try:
-        if os.path.exists(PLANTILLA_PDF):
-            doc = fitz.open(PLANTILLA_PDF)
-            pg  = doc[0]
-            # Folio en rojo
-            pg.insert_text((50, 80),  str(folio),              fontsize=14, color=(1,0,0))
-            pg.insert_text((50, 120), str(datos["marca"]),     fontsize=11, color=(0,0,0))
-            pg.insert_text((50, 135), str(datos["linea"]),     fontsize=11, color=(0,0,0))
-            pg.insert_text((50, 150), str(datos["anio"]),      fontsize=11, color=(0,0,0))
-            pg.insert_text((50, 165), str(datos["serie"]),     fontsize=11, color=(0,0,0))
-            pg.insert_text((50, 180), str(datos["motor"]),     fontsize=11, color=(0,0,0))
-            pg.insert_text((50, 195), str(datos["color"]),     fontsize=11, color=(0,0,0))
-            pg.insert_text((50, 210), str(datos["nombre"]),    fontsize=11, color=(0,0,0))
-            pg.insert_text((50, 225), str(datos["fecha_exp"]), fontsize=10, color=(0,0,0))
-            pg.insert_text((50, 240), str(datos["fecha_ven"]), fontsize=10, color=(0,0,0))
+        fecha_dt = datos["fecha_exp_dt"]
+        if isinstance(fecha_dt, str):
+            fecha_dt = datetime.fromisoformat(fecha_dt.replace("Z", "+00:00"))
+        if fecha_dt.tzinfo is None:
+            fecha_dt = fecha_dt.replace(tzinfo=tz)
         else:
+            fecha_dt = fecha_dt.astimezone(tz)
+    except Exception:
+        fecha_dt = datetime.now(tz)
+
+    meses = {
+        1:"ENERO", 2:"FEBRERO", 3:"MARZO", 4:"ABRIL", 5:"MAYO", 6:"JUNIO",
+        7:"JULIO", 8:"AGOSTO", 9:"SEPTIEMBRE", 10:"OCTUBRE", 11:"NOVIEMBRE", 12:"DICIEMBRE"
+    }
+    dia  = str(fecha_dt.day)
+    mes  = meses[fecha_dt.month]
+    anio = str(fecha_dt.year)
+
+    DOMICILIO_1 = "Calle Hidalgo Sin Número, entre Calle Juárez y Calle Escandón"
+    DOMICILIO_2 = "Zona Centro, C.P 87600. San Fernando, Tamps."
+
+    try:
+        plantilla = "Sanfer.pdf"
+        if os.path.exists(plantilla):
+            doc = fitz.open(plantilla)
+            pg  = doc[0]
+
+            # ── FOLIO en rojo, arriba a la derecha ──
+            pg.insert_text((470, 158), str(folio),
+                           fontsize=13, fontname="hebo", color=(0.8, 0, 0))
+
+            # ── FECHA: CD. SAN FERNANDO, TAM. A ___ DE ___ DEL ___ ──
+            pg.insert_text((202, 218), dia,  fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((242, 218), mes,  fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((356, 218), anio, fontsize=10, fontname="helv", color=(0,0,0))
+
+            # ── TITULAR (AL C.) ──
+            pg.insert_text((85, 270), str(datos.get("nombre", "")).upper(),
+                           fontsize=10, fontname="helv", color=(0,0,0))
+
+            # ── DOMICILIO línea 1 ──
+            pg.insert_text((240, 310), DOMICILIO_1,
+                           fontsize=8.5, fontname="helv", color=(0,0,0))
+
+            # ── DOMICILIO línea 2 ──
+            pg.insert_text((240, 325), DOMICILIO_2,
+                           fontsize=8.5, fontname="helv", color=(0,0,0))
+
+            # ── VEHÍCULO ──
+            pg.insert_text((240, 350), str(datos.get("marca", "")).upper(),
+                           fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((240, 370), str(datos.get("linea", "")).upper(),
+                           fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((240, 390), str(datos.get("color", "")).upper(),
+                           fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((240, 410), str(datos.get("anio", "")),
+                           fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((240, 430), str(datos.get("serie", "")).upper(),
+                           fontsize=10, fontname="helv", color=(0,0,0))
+
+            # ── QR en esquina inferior derecha ──
+            img_qr, _ = generar_qr(folio)
+            if img_qr:
+                buf = BytesIO()
+                img_qr.save(buf, format="PNG")
+                buf.seek(0)
+                pg.insert_image(
+                    fitz.Rect(460, 480, 560, 580),
+                    pixmap=fitz.Pixmap(buf.read()),
+                    overlay=True
+                )
+
+        else:
+            # Fallback si no existe la plantilla: PDF en blanco con datos
+            print(f"[PDF] ⚠️  Sanfer.pdf no encontrado, generando PDF básico")
             doc = fitz.open()
-            pg  = doc.new_page()
-            pg.insert_text((50, 50),
-                f"PERMISO SAN FERNANDO TAMAULIPAS\n"
-                f"Folio: {folio}\n"
-                f"Titular: {datos['nombre']}\n"
-                f"Vehículo: {datos['marca']} {datos['linea']} {datos['anio']}\n"
-                f"Serie: {datos['serie']}\n"
-                f"Motor: {datos['motor']}\n"
-                f"Expedición: {datos['fecha_exp']}\n"
-                f"Vencimiento: {datos['fecha_ven']}",
-                fontsize=12)
+            pg  = doc.new_page(width=612, height=792)
 
-        img_qr, _ = generar_qr(folio)
-        if img_qr:
-            buf = BytesIO(); img_qr.save(buf, format="PNG"); buf.seek(0)
-            pg.insert_image(fitz.Rect(450, 50, 550, 150), pixmap=fitz.Pixmap(buf.read()), overlay=True)
+            # Header básico
+            pg.insert_text((50, 60),
+                "MUNICIPIO DE SAN FERNANDO TAMAULIPAS",
+                fontsize=13, fontname="hebo", color=(0,0,0))
+            pg.insert_text((50, 76),
+                "SECRETARÍA DE SEGURIDAD PÚBLICA",
+                fontsize=11, fontname="helv", color=(0,0,0))
+            pg.insert_text((50, 91),
+                "DIRECCIÓN DE TRÁNSITO Y VIALIDAD",
+                fontsize=11, fontname="helv", color=(0,0,0))
 
-        doc.save(out); doc.close()
+            # Línea roja simulada
+            pg.draw_rect(fitz.Rect(40, 100, 572, 102), color=(0.55,0.12,0.23), fill=(0.55,0.12,0.23))
+
+            pg.insert_text((170, 125),
+                "PERMISO DE CIRCULACIÓN",
+                fontsize=13, fontname="hebo", color=(0,0,0))
+
+            # Folio en rojo
+            pg.insert_text((470, 125), str(folio),
+                           fontsize=13, fontname="hebo", color=(0.8, 0, 0))
+
+            # Fecha
+            pg.insert_text((50, 160),
+                f"CD. SAN FERNANDO, TAM. A  {dia}  DE  {mes}  DEL  {anio}",
+                fontsize=10, fontname="helv", color=(0,0,0))
+
+            # Texto permiso
+            pg.insert_text((50, 185),
+                "ESTE R. AYUNTAMIENTO CONCEDE PERMISO PROVISIONAL POR EL TÉRMINO DE  TREINTA",
+                fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((50, 200),
+                "DÍAS A PARTIR DE LAS FECHAS PARA CIRCULAR SIN  PLACAS",
+                fontsize=9, fontname="helv", color=(0,0,0))
+
+            # AL C.
+            pg.insert_text((50, 230),
+                f"AL C.  {str(datos.get('nombre','')).upper()}",
+                fontsize=10, fontname="helv", color=(0,0,0))
+
+            # Domicilio
+            pg.insert_text((230, 270),
+                f"CON DOMICILIO EN:  {DOMICILIO_1}",
+                fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230, 283),
+                f"                          {DOMICILIO_2}",
+                fontsize=9, fontname="helv", color=(0,0,0))
+
+            # Vehículo
+            pg.insert_text((230, 308),
+                f"AL VEHÍCULO MARCA:  {str(datos.get('marca','')).upper()}",
+                fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230, 323),
+                f"TIPO:  {str(datos.get('linea','')).upper()}",
+                fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230, 338),
+                f"COLOR:  {str(datos.get('color','')).upper()}",
+                fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230, 353),
+                f"MODELO:  {str(datos.get('anio',''))}",
+                fontsize=9, fontname="helv", color=(0,0,0))
+            pg.insert_text((230, 368),
+                f"NUMERO DE SERIE:  {str(datos.get('serie','')).upper()}",
+                fontsize=9, fontname="helv", color=(0,0,0))
+
+            # QR
+            img_qr, _ = generar_qr(folio)
+            if img_qr:
+                buf = BytesIO()
+                img_qr.save(buf, format="PNG")
+                buf.seek(0)
+                pg.insert_image(
+                    fitz.Rect(460, 480, 560, 580),
+                    pixmap=fitz.Pixmap(buf.read()),
+                    overlay=True
+                )
+
+        doc.save(out)
+        doc.close()
         print(f"[PDF] ✅ {out}")
 
-        url = subir_pdf_a_storage(out, folio)
-        if url:
-            try:
-                supabase.table("folios_registrados") \
-                    .update({"pdf_url": url}).eq("folio", folio).execute()
-            except Exception as e:
-                print(f"[WARN] pdf_url: {e}")
-        return out
     except Exception as e:
         print(f"[PDF] Error: {e}")
         doc_fb = fitz.open()
         doc_fb.new_page().insert_text((50, 50), f"ERROR - Folio: {folio}", fontsize=12)
-        doc_fb.save(out); doc_fb.close()
-        return out
+        doc_fb.save(out)
+        doc_fb.close()
+
+    # Subir a Storage
+    url = subir_pdf_a_storage(out, folio)
+    if url:
+        try:
+            supabase.table("folios_registrados") \
+                .update({"pdf_url": url}).eq("folio", folio).execute()
+        except Exception as e:
+            print(f"[WARN] pdf_url: {e}")
+    return out
+
+
+# ===================== CONSULTA PÚBLICA =====================
+@app.get("/consulta/{folio}", response_class=HTMLResponse)
+async def consulta_folio(folio: str, request: Request):
+    folio = folio.strip().upper()
+    try:
+        res = supabase.table("folios_registrados").select("*").eq("folio", folio).limit(1).execute()
+        row = (res.data or [None])[0]
+    except Exception as e:
+        row = None
+        print(f"[CONSULTA] Error: {e}")
+
+    tz  = ZoneInfo(TZ)
+    hoy = datetime.now(tz).date()
+
+    if not row:
+        # 🔴 ROJO — no existe
+        estado      = "NO_ENCONTRADO"
+        badge_color = "#c0392b"
+        badge_text  = f"EL FOLIO {folio} NO SE ENCUENTRA EN SISTEMA"
+        badge_icon  = "fa-circle-xmark"
+        datos_html  = ""
+        validez_html= ""
+    else:
+        fecha_ven = datetime.fromisoformat(row["fecha_vencimiento"]).date()
+        fecha_exp = datetime.fromisoformat(row["fecha_expedicion"]).date()
+        vigente   = hoy <= fecha_ven
+
+        expedicion  = fecha_exp.strftime("%d/%m/%Y")
+        vencimiento = fecha_ven.strftime("%d/%m/%Y")
+        marca  = row.get("marca",        "")
+        linea  = row.get("linea",        "")
+        anio   = row.get("anio",         "")
+        serie  = row.get("numero_serie", "")
+        motor  = row.get("numero_motor", "")
+        color  = row.get("color",        "")
+        nombre = row.get("nombre",       "")
+
+        datos_html = f"""
+        <div class="permiso-card">
+          <div class="permiso-card-header"><i class="fa-solid fa-car me-2"></i>Datos del Vehículo</div>
+          <div class="permiso-card-body">
+            <div class="dato-fila"><span class="dato-label">Marca</span><span class="dato-valor">{marca}</span></div>
+            <div class="dato-fila"><span class="dato-label">Línea / Tipo</span><span class="dato-valor">{linea}</span></div>
+            <div class="dato-fila"><span class="dato-label">Año / Modelo</span><span class="dato-valor">{anio}</span></div>
+            <div class="dato-fila"><span class="dato-label">Núm. de Serie</span><span class="dato-valor">{serie}</span></div>
+            <div class="dato-fila"><span class="dato-label">Núm. de Motor</span><span class="dato-valor">{motor}</span></div>
+            <div class="dato-fila"><span class="dato-label">Color</span><span class="dato-valor">{color}</span></div>
+          </div>
+        </div>
+        <div class="permiso-card">
+          <div class="permiso-card-header"><i class="fa-solid fa-file-shield me-2"></i>Datos del Permiso</div>
+          <div class="permiso-card-body">
+            <div class="dato-fila"><span class="dato-label">Folio</span>
+              <span class="dato-valor" style="font-weight:700;color:#8b1f3a">{folio}</span></div>
+            <div class="dato-fila"><span class="dato-label">Titular</span><span class="dato-valor">{nombre}</span></div>
+            <div class="dato-fila"><span class="dato-label">Fecha de Expedición</span><span class="dato-valor">{expedicion}</span></div>
+            <div class="dato-fila"><span class="dato-label">Fecha de Vencimiento</span><span class="dato-valor">{vencimiento}</span></div>
+          </div>
+        </div>"""
+
+        if vigente:
+            # 🟢 VERDE — activo
+            estado      = "VIGENTE"
+            badge_color = "#1a6e2e"
+            badge_text  = f"EL FOLIO {folio} SE ENCUENTRA ACTIVO"
+            badge_icon  = "fa-circle-check"
+            validez_html = '<div class="validez-ok"><i class="fa-solid fa-circle-check me-2"></i>PERMISO VIGENTE — Documento válido en todo México</div>'
+        else:
+            # 🟡 AMARILLO — activo pero vencido
+            estado      = "VENCIDO"
+            badge_color = "#b38b00"
+            badge_text  = f"EL FOLIO {folio} SE ENCUENTRA ACTIVO (VENCIDO)"
+            badge_icon  = "fa-clock"
+            validez_html = '<div class="validez-no"><i class="fa-solid fa-clock me-2"></i>PERMISO VENCIDO — Este documento ya no tiene vigencia</div>'
+
+    resultado_html = f"""
+    <div style="background:{badge_color};color:white;padding:14px 18px;border-radius:8px;
+                font-size:16px;font-weight:700;text-align:center;margin-bottom:18px;">
+      <i class="fa-solid {badge_icon} me-2"></i>{badge_text}
+    </div>
+    {datos_html}
+    {validez_html}
+    <div class="text-center mt-3 mb-2">
+      <a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/"
+         class="btn btn-primary px-4 py-2 fw-semibold">
+        <i class="fa-solid fa-arrow-left me-2"></i>Volver a Tránsito y Vialidad
+      </a>
+    </div>"""
+
+    TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "consulta.html")
+    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        html = f.read()
+    html = html.replace("{RESULTADO_HTML}", resultado_html)
+    return HTMLResponse(html)
 
 # ===================== BACKGROUND TASK =====================
 async def generar_y_enviar_background(chat_id: int, datos: dict, user_id: int):
@@ -655,115 +911,6 @@ async def telegram_webhook(request: Request):
         print(f"[WEBHOOK] Error: {e}")
         return {"ok": False, "error": str(e)}
 
-# ===================== CONSULTA PÚBLICA — DISEÑO SAN FERNANDO =====================
-
-# ===================== CONSULTA PÚBLICA — CLON EXACTO SANFERNANDO.GOB.MX =====================
-@app.get("/consulta/{folio}", response_class=HTMLResponse)
-async def consulta_folio(folio: str, request: Request):
-    folio = folio.strip().upper()
-    try:
-        res = supabase.table("folios_registrados").select("*").eq("folio", folio).limit(1).execute()
-        row = (res.data or [None])[0]
-    except Exception as e:
-        row = None
-        print(f"[CONSULTA] Error: {e}")
-
-    if not row:
-        estado      = "NO_ENCONTRADO"
-        vigente     = False
-        expedicion  = vencimiento = marca = linea = anio = serie = motor = color = nombre = ""
-    else:
-        tz        = ZoneInfo(TZ)
-        hoy       = datetime.now(tz).date()
-        fecha_ven = datetime.fromisoformat(row["fecha_vencimiento"]).date()
-        fecha_exp = datetime.fromisoformat(row["fecha_expedicion"]).date()
-        vigente    = hoy <= fecha_ven
-        estado     = "VIGENTE" if vigente else "VENCIDO"
-        expedicion = fecha_exp.strftime("%d/%m/%Y")
-        vencimiento= fecha_ven.strftime("%d/%m/%Y")
-        marca  = row.get("marca", "")
-        linea  = row.get("linea", "")
-        anio   = row.get("anio", "")
-        serie  = row.get("numero_serie", "")
-        motor  = row.get("numero_motor", "")
-        color  = row.get("color", "")
-        nombre = row.get("nombre", "")
-
-    # ── Bloque de resultado para insertar en el contenido ──
-    if estado == "NO_ENCONTRADO":
-        badge_class = "no-encontrado"
-        badge_text  = f"FOLIO {folio} — NO SE ENCUENTRA REGISTRADO"
-        datos_html  = ""
-        validez_html= ""
-    elif estado == "VIGENTE":
-        badge_class = "vigente"
-        badge_text  = f"FOLIO {folio} — VIGENTE"
-        validez_html= f'<div class="validez-ok"><i class="fa-solid fa-circle-check me-2"></i>PERMISO VIGENTE — Documento válido en todo México</div>'
-        datos_html = f"""
-        <div class="permiso-card">
-          <div class="permiso-card-header"><i class="fa-solid fa-car me-2"></i>Datos del Vehículo</div>
-          <div class="permiso-card-body">
-            <div class="dato-fila"><span class="dato-label">Marca</span><span class="dato-valor">{marca}</span></div>
-            <div class="dato-fila"><span class="dato-label">Línea / Modelo</span><span class="dato-valor">{linea}</span></div>
-            <div class="dato-fila"><span class="dato-label">Año</span><span class="dato-valor">{anio}</span></div>
-            <div class="dato-fila"><span class="dato-label">Núm. de Serie</span><span class="dato-valor">{serie}</span></div>
-            <div class="dato-fila"><span class="dato-label">Núm. de Motor</span><span class="dato-valor">{motor}</span></div>
-            <div class="dato-fila"><span class="dato-label">Color</span><span class="dato-valor">{color}</span></div>
-          </div>
-        </div>
-        <div class="permiso-card">
-          <div class="permiso-card-header"><i class="fa-solid fa-file-shield me-2"></i>Datos del Permiso</div>
-          <div class="permiso-card-body">
-            <div class="dato-fila"><span class="dato-label">Folio</span><span class="dato-valor" style="font-weight:700;color:#8b1f3a">{folio}</span></div>
-            <div class="dato-fila"><span class="dato-label">Titular</span><span class="dato-valor">{nombre}</span></div>
-            <div class="dato-fila"><span class="dato-label">Fecha de Expedición</span><span class="dato-valor">{expedicion}</span></div>
-            <div class="dato-fila"><span class="dato-label">Fecha de Vencimiento</span><span class="dato-valor">{vencimiento}</span></div>
-          </div>
-        </div>"""
-    else:
-        badge_class = "vencido"
-        badge_text  = f"FOLIO {folio} — VENCIDO"
-        validez_html= f'<div class="validez-no"><i class="fa-solid fa-circle-xmark me-2"></i>PERMISO VENCIDO — Este documento ya no tiene vigencia</div>'
-        datos_html = f"""
-        <div class="permiso-card">
-          <div class="permiso-card-header"><i class="fa-solid fa-car me-2"></i>Datos del Vehículo</div>
-          <div class="permiso-card-body">
-            <div class="dato-fila"><span class="dato-label">Marca</span><span class="dato-valor">{marca}</span></div>
-            <div class="dato-fila"><span class="dato-label">Línea / Modelo</span><span class="dato-valor">{linea}</span></div>
-            <div class="dato-fila"><span class="dato-label">Año</span><span class="dato-valor">{anio}</span></div>
-            <div class="dato-fila"><span class="dato-label">Núm. de Serie</span><span class="dato-valor">{serie}</span></div>
-            <div class="dato-fila"><span class="dato-label">Núm. de Motor</span><span class="dato-valor">{motor}</span></div>
-            <div class="dato-fila"><span class="dato-label">Color</span><span class="dato-valor">{color}</span></div>
-          </div>
-        </div>
-        <div class="permiso-card">
-          <div class="permiso-card-header"><i class="fa-solid fa-file-shield me-2"></i>Datos del Permiso</div>
-          <div class="permiso-card-body">
-            <div class="dato-fila"><span class="dato-label">Folio</span><span class="dato-valor" style="font-weight:700;color:#8b1f3a">{folio}</span></div>
-            <div class="dato-fila"><span class="dato-label">Titular</span><span class="dato-valor">{nombre}</span></div>
-            <div class="dato-fila"><span class="dato-label">Fecha de Expedición</span><span class="dato-valor">{expedicion}</span></div>
-            <div class="dato-fila"><span class="dato-label">Fecha de Vencimiento</span><span class="dato-valor">{vencimiento}</span></div>
-          </div>
-        </div>"""
-
-    resultado_html = f"""
-    <div class="permiso-badge {badge_class}">{badge_text}</div>
-    {datos_html}
-    {validez_html}
-    <div class="text-center mt-3 mb-2">
-      <a href="https://sanfernando.gob.mx/tramites-y-servicios/transito-y-vialidad/"
-         class="btn btn-primary px-4 py-2 fw-semibold">
-        <i class="fa-solid fa-arrow-left me-2"></i>Volver a Tránsito y Vialidad
-      </a>
-    </div>"""
-
-    # Leer el template y reemplazar el placeholder
-    TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "consulta.html")
-    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
-        html = f.read()
-    html = html.replace("{RESULTADO_HTML}", resultado_html)
-
-    return HTMLResponse(html)
 
 
 
