@@ -317,16 +317,16 @@ def generar_pdf(datos: dict) -> str:
             pg  = doc[0]
 
             # ── FOLIO en rojo, arriba a la derecha ──
-            pg.insert_text((470, 158), str(folio),
+            pg.insert_text((270, 58), str(folio),
                            fontsize=13, fontname="hebo", color=(0.8, 0, 0))
 
             # ── FECHA: CD. SAN FERNANDO, TAM. A ___ DE ___ DEL ___ ──
-            pg.insert_text((202, 218), dia,  fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((242, 218), mes,  fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((356, 218), anio, fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((190, 150), dia,  fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((242, 150), mes,  fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((356, 150), anio, fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── TITULAR (AL C.) ──
-            pg.insert_text((85, 270), str(datos.get("nombre", "")).upper(),
+            pg.insert_text((85, 190), str(datos.get("nombre", "")).upper(),
                            fontsize=10, fontname="helv", color=(0,0,0))
 
             # ── DOMICILIO línea 1 ──
