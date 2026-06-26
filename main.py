@@ -1104,36 +1104,65 @@ async def registro_admin_post(request: Request,
     anio: str = Form(...), color: str = Form(""), numero_serie: str = Form(...),
     numero_motor: str = Form(...), nombre: str = Form(...),
     fecha_expedicion: str = Form(None), fecha_vencimiento: str = Form(None)):
+    
     if not request.session.get("admin"):
         return RedirectResponse(url="/panel/login", status_code=303)
+
     try:
         tz = ZoneInfo(TZ)
+
         fg = folio.strip().upper() if folio and folio.strip() else generar_folio()
+
         fe = datetime.fromisoformat(fecha_expedicion).date() if fecha_expedicion and fecha_expedicion.strip() else datetime.now(tz).date()
         fv = datetime.fromisoformat(fecha_vencimiento).date() if fecha_vencimiento and fecha_vencimiento.strip() else fe + timedelta(days=30)
+
         datos_pdf = {
-            "folio": fg, "marca": marca.upper(), "linea": linea.upper(), "anio": anio,
-            "serie": numero_serie.upper(), "motor": numero_motor.upper(),
-            "color": color.upper(), "nombre": nombre.upper(),
-            "fecha_exp": fe.strftime("%d/%m/%Y"), "fecha_ven": fv.strftime("%d/%m/%Y"),
+            "folio": fg,
+            "marca": marca.upper(),
+            "linea": linea.upper(),
+            "anio": anio,
+            "serie": numero_serie.upper(),
+            "motor": numero_motor.upper(),
+            "color": color.upper(),
+            "nombre": nombre.upper(),
+            "fecha_exp": fe.strftime("%d/%m/%Y"),
+            "fecha_ven": fv.strftime("%d/%m/%Y"),
             "fecha_exp_dt": datetime.combine(fe, datetime.min.time()).replace(tzinfo=tz),
             "fecha_ven_dt": datetime.combine(fv, datetime.min.time()).replace(tzinfo=tz),
         }
-        generar_pdf(datos_pdf)
+
         supabase.table("folios_registrados").insert({
-            "folio": fg, "marca": marca.upper(), "linea": linea.upper(), "anio": anio,
-            "numero_serie": numero_serie.upper(), "numero_motor": numero_motor.upper(),
-            "color": color.upper(), "nombre": nombre.upper(),
-            "fecha_expedicion": fe.isoformat(), "fecha_vencimiento": fv.isoformat(),
-            "entidad": ENTIDAD, "estado": "ACTIVO", "estado_pago": "VALIDADO",
-            "creado_por": request.session.get("username","admin")
+            "folio": fg,
+            "marca": marca.upper(),
+            "linea": linea.upper(),
+            "anio": anio,
+            "numero_serie": numero_serie.upper(),
+            "numero_motor": numero_motor.upper(),
+            "color": color.upper(),
+            "nombre": nombre.upper(),
+            "fecha_expedicion": fe.isoformat(),
+            "fecha_vencimiento": fv.isoformat(),
+            "entidad": ENTIDAD,
+            "estado": "ACTIVO",
+            "estado_pago": "VALIDADO",
+            "creado_por": request.session.get("username", "admin")
         }).execute()
+
+        generar_subir_y_guardar_pdf(datos_pdf)
+
         from urllib.parse import quote
-        return RedirectResponse(url=f"/panel/folios?msg={quote(f'Permiso {fg} generado ✅')}", status_code=303)
+        return RedirectResponse(
+            url=f"/panel/folios?msg={quote(f'Permiso {fg} generado ✅')}",
+            status_code=303
+        )
+
     except Exception as e:
         print(f"[REGISTRO ADMIN] Error: {e}")
         from urllib.parse import quote
-        return RedirectResponse(url=f"/panel/registro_admin?error={quote(str(e))}", status_code=303)
+        return RedirectResponse(
+            url=f"/panel/registro_admin?error={quote(str(e))}",
+            status_code=303
+        )
 
 # ===================== CREAR USUARIO =====================
 @app.get("/panel/crear_usuario", response_class=HTMLResponse)
