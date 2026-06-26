@@ -1278,32 +1278,30 @@ async def registro_usuario_post(request: Request,
         }
         user_id = request.session.get("user_id")
 
-supabase.table("folios_registrados").insert({
-    "folio": fg,
-    "marca": marca.upper(),
-    "linea": linea.upper(),
-    "anio": anio,
-    "numero_serie": serie.upper(),
-    "numero_motor": motor.upper(),
-    "color": color.upper(),
-    "nombre": nombre.upper(),
-    "fecha_expedicion": fe.date().isoformat(),
-    "fecha_vencimiento": fv.date().isoformat(),
-    "entidad": ENTIDAD,
-    "estado": "ACTIVO",
-    "estado_pago": "VALIDADO",
-    "user_id": user_id,
-    "creado_por": request.session["username"]
-}).execute()
+        supabase.table("folios_registrados").insert({
+            "folio": fg,
+            "marca": marca.upper(),
+            "linea": linea.upper(),
+            "anio": anio,
+            "numero_serie": serie.upper(),
+            "numero_motor": motor.upper(),
+            "color": color.upper(),
+            "nombre": nombre.upper(),
+            "fecha_expedicion": fe.date().isoformat(),
+            "fecha_vencimiento": fv.date().isoformat(),
+            "entidad": ENTIDAD,
+            "estado": "ACTIVO",
+            "estado_pago": "VALIDADO",
+            "user_id": user_id,
+            "creado_por": request.session["username"]
+        }).execute()
 
-pdf_url = generar_subir_y_guardar_pdf(datos_pdf)
+        pdf_url = generar_subir_y_guardar_pdf(datos_pdf)
 
-supabase.table("verificacion_sanfernando")\
-    .update({
-        "folios_usados": usad + 1
-    })\
-    .eq("username", request.session["username"])\
-    .execute()
+        supabase.table("verificacion_sanfernando")\
+            .update({"folios_usados": usad + 1})\
+            .eq("username", request.session["username"])\
+            .execute()
         contenido = f"""
         <div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">✅ Permiso Generado</h1><div class="borde-hr"><hr></div></div>
         <div class="form-card text-center">
