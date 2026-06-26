@@ -759,6 +759,28 @@ async def admin_folios(request: Request):
     ep_filtro = request.query_params.get("estado_pago","todos")
     ev_filtro = request.query_params.get("estado_vigencia","todos")
     msg       = request.query_params.get("msg","")
+    pdf_url   = request.query_params.get("pdf","")
+
+    # Modal de descarga si viene pdf recién generado
+    modal_html = ""
+    if pdf_url:
+        modal_html = f"""
+<div id="modalDescarga" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center">
+  <div style="background:white;border-radius:14px;padding:30px;max-width:380px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+    <div style="font-size:48px;margin-bottom:12px">📄</div>
+    <h2 style="color:#8b1f3a;font-size:20px;font-weight:700;margin-bottom:8px">Permiso Generado</h2>
+    <p style="color:#666;font-size:14px;margin-bottom:20px">El permiso fue registrado correctamente en el sistema.</p>
+    <p style="color:#444;font-size:14px;font-weight:600;margin-bottom:20px">¿Deseas descargar el PDF ahora?</p>
+    <div class="d-flex gap-2 justify-content-center">
+      <a href="{pdf_url}" target="_blank" class="btn btn-primary px-4 py-2 fw-bold" onclick="document.getElementById('modalDescarga').remove()">
+        <i class="fa-solid fa-download me-2"></i>Sí, descargar
+      </a>
+      <button class="btn btn-outline-secondary px-4 py-2" onclick="document.getElementById('modalDescarga').remove()">
+        No, cerrar
+      </button>
+    </div>
+  </div>
+</div>"""
     try:
         q = supabase.table("folios_registrados").select("*").eq("entidad",ENTIDAD)
         if filtro: q = q.ilike(criterio, f"%{filtro}%")
@@ -823,6 +845,7 @@ async def admin_folios(request: Request):
       <span class="ms-auto" style="font-size:13px;color:#666">Total: <strong>{len(folios)}</strong></span>
     </form>"""
     contenido = f"""
+    {modal_html}
     <div class="row-titulo mb-3"><h1 class="titulo-row" style="font-size:22px">Folios Registrados</h1><div class="borde-hr"><hr></div></div>
     {msg_html}{filtros}
     <div class="tabla-wrap"><table>
@@ -924,8 +947,26 @@ async def registro_admin_post(request: Request,
             "creado_por": request.session.get("username","admin")
         }).execute()
         generar_subir_y_guardar_pdf(datos_pdf)
+
+        # Obtener pdf_url recién subida
+        pdf_url = ""
+        try:
+            res = supabase.table("folios_registrados").select("pdf_url").eq("folio", fg).execute()
+            pdf_url = res.data[0].get("pdf_url", "") if res.data else ""
+        except Exception: pass
+
+        modal_script = f"""
+<script>
+document.addEventListener('DOMContentLoaded', function() {{
+  if (confirm('✅ Permiso {fg} generado correctamente.\\n\\n¿Deseas descargar el PDF ahora?')) {{
+    window.open('{pdf_url}', '_blank');
+  }}
+}});
+</script>""" if pdf_url else ""
+
         from urllib.parse import quote
-        return RedirectResponse(url=f"/panel/folios?msg={quote(f'Permiso {fg} generado ✅')}", status_code=303)
+        resp = RedirectResponse(url=f"/panel/folios?msg={quote(f'Permiso {fg} generado ✅')}&pdf={quote(pdf_url)}", status_code=303)
+        return resp
     except Exception as e:
         print(f"[REGISTRO ADMIN] Error: {e}")
         from urllib.parse import quote
@@ -1554,21 +1595,4 @@ async def root():
     <strong>Costo:</strong> ${PRECIO_PERMISO} MXN<br>
     <strong>Tiempo límite:</strong> 36 horas<br>
     <strong>Timers activos:</strong> {len(timers_activos)}<br>
-    <strong>Siguiente folio:</strong> {FOLIO_NUM_PREF}{_folio_counter['siguiente']}
-  </div>
-  <a href="/panel/login" class="btn-p">→ Panel de Administración</a>
-</div>
-</body></html>""")
-
-@app.get("/health")
-async def health():
-    return {"status":"healthy","version":"1.0","entidad":"San Fernando, Tamaulipas",
-            "timestamp":datetime.now(ZoneInfo(TZ)).isoformat(),
-            "timers_activos":len(timers_activos),
-            "siguiente_folio":f"{FOLIO_NUM_PREF}{_folio_counter['siguiente']}"}
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.getenv("PORT", 8000))
-    print(f"[SISTEMA] San Fernando v1.0 iniciando en puerto {port}")
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    <strong>Siguiente folio:</strong>
