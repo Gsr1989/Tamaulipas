@@ -478,6 +478,24 @@ def generar_pdf(datos: dict) -> str:
             print(f"[WARN] pdf_url: {e}")
     return out
 
+def generar_subir_y_guardar_pdf(datos_pdf: dict) -> str:
+    folio = datos_pdf["folio"]
+
+    ruta_pdf = generar_pdf(datos_pdf)
+    url_pdf = subir_pdf_a_storage(ruta_pdf, folio)
+
+    if url_pdf:
+        try:
+            supabase.table("folios_registrados") \
+                .update({"pdf_url": url_pdf}) \
+                .eq("folio", folio) \
+                .execute()
+            print(f"[DB] ✅ pdf_url guardado para folio {folio}")
+        except Exception as e:
+            print(f"[DB] ❌ Error guardando pdf_url {folio}: {e}")
+
+    return url_pdf
+
 
 # ===================== CONSULTA PÚBLICA =====================
 async def callback_detener(callback: CallbackQuery):
