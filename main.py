@@ -468,15 +468,8 @@ def generar_pdf(datos: dict) -> str:
         doc_fb.save(out)
         doc_fb.close()
 
-    # Subir a Storage
-    url = subir_pdf_a_storage(out, folio)
-    if url:
-        try:
-            supabase.table("folios_registrados") \
-                .update({"pdf_url": url}).eq("folio", folio).execute()
-        except Exception as e:
-            print(f"[WARN] pdf_url: {e}")
     return out
+    
 
 def generar_subir_y_guardar_pdf(datos_pdf: dict) -> str:
     folio = datos_pdf["folio"]
