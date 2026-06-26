@@ -758,44 +758,265 @@ async def consulta_folio(folio: str, request: Request):
     </div>"""
 
     # Leer el template y reemplazar el placeholder
-    with open("templates/consulta.html", "r", encoding="utf-8") as f:
+    TEMPLATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates", "consulta.html")
+    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         html = f.read()
     html = html.replace("{RESULTADO_HTML}", resultado_html)
 
     return HTMLResponse(html)
 
 
+
+# ===================== HELPER — RENDER CON DISEÑO SAN FERNANDO =====================
+
+def _base(titulo: str, seccion: str, contenido: str,
+          breadcrumb_extra: str = "", links_extra: str = "", scripts: str = "") -> str:
+    """
+    Envuelve cualquier contenido en el layout de San Fernando:
+    header con logo, barra admin roja, breadcrumb, contenido, footer.
+    """
+    admin_links = f'<div class="d-flex gap-3 align-items-center"><a href="/panel/admin"><i class="fa-solid fa-house me-1"></i>Inicio</a><a href="/panel/logout"><i class="fa-solid fa-right-from-bracket me-1"></i>Salir</a></div>'
+
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{titulo} - San Fernando, Tamaulipas</title>
+<link rel="icon" href="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/cropped-logo-secundario-vertical-32x32.png" sizes="32x32"/>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link rel="stylesheet" href="https://sanfernando.gob.mx/wp-content/themes/municipios-tamaulipas/assets/css/estilos.css">
+<style>
+:root {{ --primario:#8b1f3a !important; --primario-o:#700c26 !important; --font:'Encode Sans',sans-serif; }}
+* {{ font-family:var(--font); }}
+.btn-primary {{ --bs-btn-bg:#8b1f3a !important; --bs-btn-border-color:#8b1f3a !important; --bs-btn-hover-bg:#700c26 !important; --bs-btn-color:#fff; --bs-btn-hover-color:#fff; }}
+.logo-home {{ display:flex !important; }}
+.logo-home a picture img {{ display:block !important; visibility:visible !important; max-height:65px !important; width:auto !important; }}
+.admin-bar {{ background:#8b1f3a; color:white; padding:10px 20px; display:flex; align-items:center; justify-content:space-between; font-weight:700; font-size:14px; }}
+.admin-bar a {{ color:rgba(255,255,255,.85); text-decoration:none; font-size:13px; }}
+.admin-bar a:hover {{ color:white; }}
+.admin-content {{ padding:20px; max-width:960px; margin:0 auto; }}
+.stat-card {{ background:white; border-radius:10px; padding:18px; text-align:center; box-shadow:0 2px 8px rgba(0,0,0,.08); }}
+.stat-num {{ font-size:32px; font-weight:700; color:#8b1f3a; }}
+.stat-lbl {{ font-size:11px; color:#666; font-weight:700; text-transform:uppercase; margin-top:4px; }}
+.menu-btn {{ background:white; border:1.5px solid #e0e0e0; border-radius:10px; padding:18px; text-align:center; text-decoration:none; color:#1d1d1b; transition:.2s; display:block; }}
+.menu-btn:hover {{ border-color:#8b1f3a; color:#8b1f3a; transform:translateY(-2px); box-shadow:0 4px 12px rgba(139,31,58,.15); }}
+.menu-btn i {{ font-size:26px; display:block; margin-bottom:7px; color:#8b1f3a; }}
+.menu-btn.danger {{ border-color:#dc3545; }}
+.menu-btn.danger i {{ color:#dc3545; }}
+.menu-btn.danger:hover {{ color:#dc3545; }}
+table {{ font-size:13px; width:100%; border-collapse:collapse; }}
+thead th {{ background:#8b1f3a; color:white; white-space:nowrap; padding:9px 10px; border:none; }}
+tbody td {{ padding:8px 10px; vertical-align:middle; border-bottom:1px solid #eee; }}
+tbody tr:last-child td {{ border-bottom:none; }}
+tbody tr:hover td {{ background:#fef9f9; }}
+.tabla-wrap {{ overflow-x:auto; background:white; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,.08); }}
+.bp {{ display:inline-block; padding:2px 9px; border-radius:12px; font-size:11px; font-weight:700; color:white; }}
+.bp-p {{ background:#dc3545; }}
+.bp-v {{ background:#1a6e2e; }}
+.bp-vig {{ background:#1a6e2e; }}
+.bp-ven {{ background:#8b1f3a; }}
+.form-card {{ background:white; border-radius:10px; padding:25px; box-shadow:0 2px 8px rgba(0,0,0,.08); }}
+.form-label {{ font-weight:600; font-size:14px; }}
+.form-control:focus {{ border-color:#8b1f3a; box-shadow:0 0 0 .2rem rgba(139,31,58,.15); }}
+.info-box {{ background:#f5f5f5; border-radius:8px; padding:14px; font-size:13px; margin-bottom:14px; }}
+.btn-vencer  {{ background:#b38b00; color:white; border:none; width:100%; padding:10px; border-radius:6px; font-weight:700; margin-bottom:8px; cursor:pointer; }}
+.btn-simular {{ background:#8b1f3a; color:white; border:none; width:100%; padding:10px; border-radius:6px; font-weight:700; margin-bottom:8px; cursor:pointer; }}
+.btn-restaurar {{ background:#1a6e2e; color:white; border:none; width:100%; padding:10px; border-radius:6px; font-weight:700; cursor:pointer; }}
+.alert-sf {{ padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:13px; font-weight:600; }}
+.alert-ok  {{ background:#d4edda; color:#155724; border:1px solid #c3e6cb; }}
+.alert-err {{ background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }}
+</style>
+</head>
+<body>
+
+<header id="header" class="w-100 header">
+<div id="contenido-fix">
+  <div id="logo-buscador">
+    <div class="container-lg">
+      <div class="row">
+        <div class="col-8 col-sm-6 logo-home d-flex align-items-center">
+          <a href="https://sanfernando.gob.mx">
+            <picture class="img-fluid logo">
+              <source type="image/webp" srcset="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png.webp"/>
+              <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png" alt="San Fernando" class="img-fluid logo"/>
+            </picture>
+          </a>
+        </div>
+        <div class="col-4 col-sm-6 logo-home d-flex align-items-center justify-content-end">
+          <div class="d-block d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#nav-right">
+            <form class="menu-btn-container m-0 h-100 d-flex justify-content-end">
+              <label class="btn-movil m-0"><div class="menu-bars"><span></span><span></span><span></span></div></label>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="menu-responsivo">
+    <div class="offcanvas offcanvas-end w-100 d-lg-none" tabindex="-1" id="nav-right">
+      <div class="offcanvas-header">
+        <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png" alt="San Fernando" style="max-height:50px"/>
+        <button type="button" class="btn-close btn-close-white btn-lg" data-bs-dismiss="offcanvas"></button>
+      </div>
+      <div class="offcanvas-body">
+        <ul class="menu clean-list menu-principal">
+          <li><a href="/panel/admin">Panel Admin</a></li>
+          <li><a href="/panel/folios">Ver Folios</a></li>
+          <li><a href="/panel/registro_admin">Registrar Permiso</a></li>
+          <li><a href="/panel/test_fechas">Test Fechas</a></li>
+          <li><a href="/panel/logout">Cerrar Sesión</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+</header>
+
+<div class="admin-bar">
+  <span><i class="fa-solid fa-shield-halved me-2"></i>{seccion}</span>
+  {admin_links}
+</div>
+
+<div id="breadcrumbs">
+  <div class="container-lg"><div class="row"><div class="col-12">
+    <div class="breadcrumbs">
+      <span>
+        <span><a href="https://sanfernando.gob.mx/">Portada</a></span> »
+        <span><a href="/panel/admin">Panel Admin</a></span>
+        {breadcrumb_extra}
+      </span>
+    </div>
+  </div></div></div>
+</div>
+
+<div class="admin-content">
+{contenido}
+</div>
+
+<footer id="footer" style="margin-top:40px">
+  <div class="container-lg" id="content-footer">
+    <div class="row">
+      <div class="col-lg-6">
+        <div class="row-titulo"><h2 class="titulo-row">San Fernando</h2><div class="borde-hr"></div></div>
+        <div class="row"><div class="col informacion-logo d-flex">
+          <picture class="logo">
+            <img class="logo" src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png" alt="San Fernando" style="max-height:75px;display:block"/>
+          </picture>
+          <div class="px-5"><p>Calle Hidalgo Sin Número, entre Calle Juárez y Calle Escandón, Zona Centro, C.P 87600.</p></div>
+        </div></div>
+      </div>
+      <div class="col-lg-3 col-6">
+        <div class="row-titulo"><h2 class="titulo-row">Accesos</h2><div class="borde-hr"></div></div>
+        <ul class="informacion-links clean-list">
+          <li><a href="/panel/admin">Panel Admin</a></li>
+          <li><a href="/panel/folios">Ver Folios</a></li>
+          <li><a href="/panel/registro_admin">Registrar Permiso</a></li>
+          <li><a href="https://sanfernando.gob.mx/">Sitio Municipal</a></li>
+        </ul>
+      </div>
+      <div class="col-lg-3 col-6">
+        <div class="row-titulo"><h2 class="titulo-row">Síguenos en</h2><div class="borde-hr"></div></div>
+        <ul class="clean-list informacion-links">
+          <li><a href="https://www.facebook.com/VeronicaAguirreOficial" target="_blank"><i class="fa-brands fa-square-facebook"></i> Facebook</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div id="terminos-y-condiciones">
+    <div class="container-xxl container-lg">
+      <div class="row d-flex justify-content-center">
+        <div class="col-lg-7 text-center mt-2 mb-2 contenido-text">
+          Todos los derechos reservados © 2026 | Gobierno del Estado de Tamaulipas 2022 - 2028
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://sanfernando.gob.mx/wp-content/themes/municipios-tamaulipas/assets/js/funciones.js"></script>
+{scripts}
+</body>
+</html>"""
+
+
+def _login_html(error: bool = False) -> str:
+    err_html = '<div class="alert-sf alert-err mb-3"><i class="fa-solid fa-triangle-exclamation me-2"></i>Usuario o contraseña incorrectos</div>' if error else ""
+    return f"""<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Acceso Administrativo - Tránsito San Fernando</title>
+<link rel="icon" href="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/cropped-logo-secundario-vertical-32x32.png" sizes="32x32"/>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
+<link rel="stylesheet" href="https://sanfernando.gob.mx/wp-content/themes/municipios-tamaulipas/assets/css/estilos.css">
+<style>
+:root {{ --primario:#8b1f3a !important; --font:'Encode Sans',sans-serif; }}
+* {{ font-family:var(--font); }}
+body {{ background:#8b1f3a; min-height:100vh; margin:0; display:flex; flex-direction:column; }}
+.login-header {{ background:white; padding:10px 20px; text-align:center; border-bottom:3px solid #8b1f3a; }}
+.login-header img {{ height:55px; object-fit:contain; }}
+.login-wrap {{ flex:1; display:flex; align-items:center; justify-content:center; padding:30px 15px; }}
+.login-card {{ background:white; border-radius:14px; padding:35px; max-width:380px; width:100%; box-shadow:0 10px 40px rgba(0,0,0,.25); }}
+.login-escudo {{ text-align:center; margin-bottom:18px; }}
+.login-escudo img {{ height:65px; filter:sepia(1) saturate(3) hue-rotate(310deg) brightness(.7); }}
+.login-title {{ text-align:center; font-size:19px; font-weight:700; color:#8b1f3a; margin-bottom:4px; }}
+.login-sub {{ text-align:center; font-size:12px; color:#666; margin-bottom:22px; }}
+.form-label {{ font-weight:600; font-size:14px; }}
+.form-control:focus {{ border-color:#8b1f3a; box-shadow:0 0 0 .2rem rgba(139,31,58,.15); }}
+.btn-ingresar {{ background:#8b1f3a; border-color:#8b1f3a; color:white; width:100%; padding:12px; font-weight:700; }}
+.btn-ingresar:hover {{ background:#700c26; border-color:#700c26; color:white; }}
+.alert-sf {{ padding:10px 14px; border-radius:6px; margin-bottom:14px; font-size:13px; font-weight:600; }}
+.alert-err {{ background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; }}
+.login-footer {{ background:rgba(0,0,0,.2); color:rgba(255,255,255,.7); text-align:center; padding:12px; font-size:12px; }}
+</style>
+</head>
+<body>
+<div class="login-header">
+  <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/logotipo-secundario-horizontal-final_1600x480.png" alt="San Fernando">
+</div>
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-escudo">
+      <img src="https://sanfernando.gob.mx/wp-content/uploads/sites/36/2026/04/escudo-con-fecha_blanco.png" alt="Escudo">
+    </div>
+    <div class="login-title">Tránsito y Vialidad</div>
+    <div class="login-sub">Municipio de San Fernando, Tamaulipas<br>Sistema Administrativo</div>
+    {err_html}
+    <form method="POST" action="/panel/login">
+      <div class="mb-3">
+        <label class="form-label">Usuario</label>
+        <input type="text" name="username" class="form-control" required autofocus autocomplete="off">
+      </div>
+      <div class="mb-4">
+        <label class="form-label">Contraseña</label>
+        <input type="password" name="password" class="form-control" required>
+      </div>
+      <button type="submit" class="btn btn-ingresar">
+        <i class="fa-solid fa-right-to-bracket me-2"></i>Ingresar al Sistema
+      </button>
+    </form>
+  </div>
+</div>
+<div class="login-footer">
+  Dirección de Tránsito y Vialidad — San Fernando, Tamaulipas © 2026
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>"""
+
+
 # ===================== PANEL ADMIN =====================
 @app.get("/panel/login", response_class=HTMLResponse)
 async def login_get(request: Request):
     error = request.query_params.get("error", "")
-    return HTMLResponse(f"""<!DOCTYPE html><html lang="es"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin — San Fernando Tránsito</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-<style>
-body{{background:#8b1f3a; min-height:100vh; display:flex; align-items:center; justify-content:center; margin:0}}
-.card{{max-width:380px; width:100%; padding:35px; border-radius:14px; box-shadow:0 10px 40px rgba(0,0,0,.3)}}
-h2{{color:#8b1f3a; font-weight:700; text-align:center; margin-bottom:25px}}
-.btn-primary{{background:#8b1f3a; border-color:#8b1f3a}}
-.btn-primary:hover{{background:#700c26; border-color:#700c26}}
-</style></head><body>
-<div class="card bg-white">
-  <h2>🚦 Tránsito San Fernando</h2>
-  {'<div class="alert alert-danger py-2 text-center">Credenciales incorrectas</div>' if error else ''}
-  <form method="POST" action="/panel/login">
-    <div class="mb-3">
-      <label class="form-label fw-semibold">Usuario</label>
-      <input type="text" name="username" class="form-control" required autofocus>
-    </div>
-    <div class="mb-4">
-      <label class="form-label fw-semibold">Contraseña</label>
-      <input type="password" name="password" class="form-control" required>
-    </div>
-    <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">Entrar</button>
-  </form>
-</div>
-</body></html>""")
+    return HTMLResponse(_login_html(bool(error)))
 
 @app.post("/panel/login")
 async def login_post(request: Request,
@@ -822,64 +1043,61 @@ async def panel_admin(request: Request):
         pendientes = len(r.data or [])
     except Exception:
         pass
-    return HTMLResponse(f"""<!DOCTYPE html><html lang="es"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Panel Admin — San Fernando</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css"/>
-<style>
-body{{background:#f4f4f4; font-family:'Encode Sans',sans-serif; margin:0}}
-.top-bar{{background:#8b1f3a; color:white; padding:14px 20px; display:flex; align-items:center; justify-content:space-between}}
-.top-bar h1{{margin:0; font-size:18px; font-weight:700}}
-.top-bar a{{color:rgba(255,255,255,.8); text-decoration:none; font-size:13px}}
-.top-bar a:hover{{color:white}}
-.stats{{display:flex; gap:15px; padding:20px; flex-wrap:wrap}}
-.stat-card{{background:white; border-radius:10px; padding:18px 22px; flex:1; min-width:140px; box-shadow:0 2px 8px rgba(0,0,0,.08); text-align:center}}
-.stat-card .num{{font-size:32px; font-weight:700; color:#8b1f3a}}
-.stat-card .lbl{{font-size:12px; color:#666; margin-top:4px; font-weight:600; text-transform:uppercase}}
-.menu-grid{{display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:12px; padding:0 20px 20px}}
-.menu-btn{{background:white; border:2px solid #e0e0e0; border-radius:10px; padding:20px; text-align:center; text-decoration:none; color:#1d1d1b; transition:.2s; display:block}}
-.menu-btn:hover{{border-color:#8b1f3a; color:#8b1f3a; transform:translateY(-2px); box-shadow:0 4px 12px rgba(139,31,58,.15)}}
-.menu-btn i{{font-size:28px; display:block; margin-bottom:8px; color:#8b1f3a}}
-.menu-btn span{{font-size:13px; font-weight:600}}
-.menu-btn.danger{{border-color:#dc3545}}
-.menu-btn.danger:hover{{border-color:#dc3545; color:#dc3545}}
-.menu-btn.danger i{{color:#dc3545}}
-</style></head><body>
-<div class="top-bar">
-  <h1><i class="fa-solid fa-shield-halved me-2"></i>Panel de Administración — Tránsito San Fernando</h1>
-  <a href="/panel/logout"><i class="fa-solid fa-right-from-bracket me-1"></i>Salir</a>
-</div>
-<div class="stats">
-  <div class="stat-card">
-    <div class="num">{len(timers_activos)}</div>
-    <div class="lbl">Timers activos</div>
-  </div>
-  <div class="stat-card">
-    <div class="num" style="color:{'#dc3545' if pendientes else '#1a6e2e'}">{pendientes}</div>
-    <div class="lbl">Pendientes de pago</div>
-  </div>
-  <div class="stat-card">
-    <div class="num">{FOLIO_NUM_PREF}{_folio_counter['siguiente']}</div>
-    <div class="lbl">Siguiente folio</div>
-  </div>
-</div>
-<div class="menu-grid">
-  <a href="/panel/folios" class="menu-btn">
-    <i class="fa-solid fa-list-check"></i><span>Ver Folios</span>
-  </a>
-  <a href="/panel/registro_admin" class="menu-btn">
-    <i class="fa-solid fa-file-circle-plus"></i><span>Registrar Permiso</span>
-  </a>
-  <a href="/panel/test_fechas" class="menu-btn">
-    <i class="fa-solid fa-flask"></i><span>🧪 Test Fechas</span>
-  </a>
-  <a href="/panel/logout" class="menu-btn danger">
-    <i class="fa-solid fa-right-from-bracket"></i><span>Cerrar Sesión</span>
-  </a>
-</div>
-</body></html>""")
+
+    color_pend = "#dc3545" if pendientes else "#1a6e2e"
+    contenido = f"""
+    <div class="row g-3 mb-4">
+      <div class="col-6">
+        <div class="stat-card">
+          <div class="stat-num">{len(timers_activos)}</div>
+          <div class="stat-lbl">Timers Activos</div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="stat-card">
+          <div class="stat-num" style="color:{color_pend}">{pendientes}</div>
+          <div class="stat-lbl">Pendientes de Pago</div>
+        </div>
+      </div>
+      <div class="col-12">
+        <div class="stat-card">
+          <div class="stat-num">{FOLIO_NUM_PREF}{_folio_counter['siguiente']}</div>
+          <div class="stat-lbl">Siguiente Folio</div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-6">
+        <a href="/panel/folios" class="menu-btn">
+          <i class="fa-solid fa-list-check"></i>
+          <span style="font-size:13px;font-weight:600">Ver Folios</span>
+        </a>
+      </div>
+      <div class="col-6">
+        <a href="/panel/registro_admin" class="menu-btn">
+          <i class="fa-solid fa-file-circle-plus"></i>
+          <span style="font-size:13px;font-weight:600">Registrar Permiso</span>
+        </a>
+      </div>
+      <div class="col-6">
+        <a href="/panel/test_fechas" class="menu-btn">
+          <i class="fa-solid fa-flask"></i>
+          <span style="font-size:13px;font-weight:600">🧪 Test Fechas</span>
+        </a>
+      </div>
+      <div class="col-6">
+        <a href="/panel/logout" class="menu-btn danger">
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span style="font-size:13px;font-weight:600">Cerrar Sesión</span>
+        </a>
+      </div>
+    </div>"""
+
+    return HTMLResponse(_base(
+        titulo="Panel de Administración",
+        seccion="Panel de Administración — Tránsito San Fernando",
+        contenido=contenido
+    ))
 
 @app.get("/panel/folios", response_class=HTMLResponse)
 async def admin_folios(request: Request):
@@ -887,12 +1105,12 @@ async def admin_folios(request: Request):
         return RedirectResponse(url="/panel/login", status_code=303)
 
     estado_pago_filtro = request.query_params.get("estado_pago", "todos")
+    msg = request.query_params.get("msg", "")
     try:
         q = supabase.table("folios_registrados").select("*").eq("entidad", ENTIDAD)
         if estado_pago_filtro != "todos":
             q = q.eq("estado_pago", estado_pago_filtro)
         folios = q.order("fecha_expedicion", desc=True).execute().data or []
-
         tz  = ZoneInfo(TZ)
         hoy = datetime.now(tz).date()
         for f in folios:
@@ -902,74 +1120,70 @@ async def admin_folios(request: Request):
             except Exception:
                 f["estado_calc"] = "ERROR"
     except Exception as e:
-        print(f"[FOLIOS] Error: {e}")
         folios = []
+
+    msg_html = f'<div class="alert-sf alert-ok mb-3"><i class="fa-solid fa-circle-check me-2"></i>{msg}</div>' if msg else ""
 
     filas = ""
     for f in folios:
         pago   = f.get("estado_pago", "VALIDADO") or "VALIDADO"
         estado = f.get("estado_calc", "")
-        badge_pago  = f'<span style="background:{"#dc3545" if pago=="PENDIENTE_PAGO" else "#1a6e2e"};color:white;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">{"PENDIENTE" if pago=="PENDIENTE_PAGO" else "VALIDADO"}</span>'
-        badge_est   = f'<span style="background:{"#1a6e2e" if estado=="VIGENTE" else "#8b1f3a"};color:white;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">{estado}</span>'
-        btn_validar = f'<form method="POST" action="/panel/validar/{f["folio"]}" style="display:inline"><button class="btn btn-sm btn-success py-0 px-2" onclick="return confirm(\'¿Validar pago?\')">✅ Validar</button></form>' if pago == "PENDIENTE_PAGO" else ""
+        bp     = f'<span class="bp bp-p">PENDIENTE</span>' if pago == "PENDIENTE_PAGO" else f'<span class="bp bp-v">VALIDADO</span>'
+        be     = f'<span class="bp bp-vig">VIGENTE</span>' if estado == "VIGENTE" else f'<span class="bp bp-ven">VENCIDO</span>'
+        btn_val = f'<form method="POST" action="/panel/validar/{f["folio"]}" style="display:inline"><button class="btn btn-sm py-0 px-2" style="background:#1a6e2e;color:white;font-size:11px" onclick="return confirm(\'¿Validar pago?\')">✅</button></form>' if pago == "PENDIENTE_PAGO" else ""
         filas += f"""<tr>
           <td><strong>{f.get("folio","")}</strong></td>
           <td>{f.get("marca","")} {f.get("linea","")}</td>
           <td>{f.get("anio","")}</td>
           <td style="font-size:11px">{f.get("numero_serie","")}</td>
-          <td>{f.get("fecha_expedicion","")[:10]}</td>
-          <td>{f.get("fecha_vencimiento","")[:10]}</td>
-          <td>{badge_est}</td>
-          <td>{badge_pago}</td>
+          <td>{str(f.get("fecha_expedicion",""))[:10]}</td>
+          <td>{str(f.get("fecha_vencimiento",""))[:10]}</td>
+          <td>{be}</td>
+          <td>{bp}</td>
           <td>
-            {btn_validar}
-            <a href="/consulta/{f.get('folio','')}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-2">🔗</a>
+            {btn_val}
+            <a href="/consulta/{f.get('folio','')}" target="_blank" class="btn btn-sm py-0 px-2" style="background:#555;color:white;font-size:11px">🔗</a>
           </td>
         </tr>"""
 
-    filtro_html = f"""
-    <form method="GET" class="d-flex gap-2 mb-3 flex-wrap">
-      <select name="estado_pago" class="form-select form-select-sm" style="width:auto">
-        <option value="todos" {"selected" if estado_pago_filtro=="todos" else ""}>Todos los pagos</option>
-        <option value="PENDIENTE_PAGO" {"selected" if estado_pago_filtro=="PENDIENTE_PAGO" else ""}>Pendiente pago</option>
-        <option value="VALIDADO" {"selected" if estado_pago_filtro=="VALIDADO" else ""}>Validados</option>
-      </select>
-      <button type="submit" class="btn btn-sm btn-primary">Filtrar</button>
-      <a href="/panel/folios" class="btn btn-sm btn-outline-secondary">Limpiar</a>
+    filtros = f"""
+    <form method="GET" class="d-flex gap-2 mb-3 flex-wrap align-items-end">
+      <div>
+        <label class="form-label mb-1" style="font-size:12px;font-weight:700">Estado de pago</label>
+        <select name="estado_pago" class="form-select form-select-sm">
+          <option value="todos" {"selected" if estado_pago_filtro=="todos" else ""}>Todos</option>
+          <option value="PENDIENTE_PAGO" {"selected" if estado_pago_filtro=="PENDIENTE_PAGO" else ""}>Pendiente</option>
+          <option value="VALIDADO" {"selected" if estado_pago_filtro=="VALIDADO" else ""}>Validado</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+      <a href="/panel/folios" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+      <span class="ms-auto" style="font-size:13px;color:#666">Total: <strong>{len(folios)}</strong></span>
     </form>"""
 
-    return HTMLResponse(f"""<!DOCTYPE html><html lang="es"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Folios — San Fernando</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-body{{font-family:'Encode Sans',sans-serif; background:#f4f4f4; margin:0}}
-.top-bar{{background:#8b1f3a;color:white;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}}
-.top-bar h1{{margin:0;font-size:17px;font-weight:700}}
-.top-bar a{{color:rgba(255,255,255,.8);text-decoration:none;font-size:13px}}
-.contenido{{padding:20px}}
-table{{font-size:13px}}
-th{{background:#8b1f3a;color:white;white-space:nowrap;padding:8px 10px}}
-td{{padding:7px 10px;vertical-align:middle}}
-</style></head><body>
-<div class="top-bar">
-  <h1>📋 Folios San Fernando ({len(folios)})</h1>
-  <a href="/panel/admin">← Panel</a>
-</div>
-<div class="contenido">
-  {filtro_html}
-  <div class="table-responsive">
-  <table class="table table-bordered table-hover bg-white rounded shadow-sm">
-    <thead><tr>
-      <th>Folio</th><th>Vehículo</th><th>Año</th><th>Serie</th>
-      <th>Expedición</th><th>Vencimiento</th><th>Estado</th><th>Pago</th><th>Acciones</th>
-    </tr></thead>
-    <tbody>{filas if filas else '<tr><td colspan="9" class="text-center text-muted py-4">Sin folios</td></tr>'}</tbody>
-  </table>
-  </div>
-</div>
-</body></html>""")
+    contenido = f"""
+    <div class="row-titulo mb-3">
+      <h1 class="titulo-row" style="font-size:22px">Folios Registrados</h1>
+      <div class="borde-hr"><hr></div>
+    </div>
+    {msg_html}
+    {filtros}
+    <div class="tabla-wrap">
+      <table>
+        <thead><tr>
+          <th>Folio</th><th>Vehículo</th><th>Año</th><th>Serie</th>
+          <th>Expedición</th><th>Vencimiento</th><th>Estado</th><th>Pago</th><th>Acciones</th>
+        </tr></thead>
+        <tbody>{filas if filas else '<tr><td colspan="9" style="text-align:center;color:#999;padding:20px">Sin folios</td></tr>'}</tbody>
+      </table>
+    </div>"""
+
+    return HTMLResponse(_base(
+        titulo="Folios Registrados",
+        seccion="Folios Registrados",
+        breadcrumb_extra='» <span>Folios</span>',
+        contenido=contenido
+    ))
 
 @app.post("/panel/validar/{folio}")
 async def validar_pago(request: Request, folio: str):
@@ -981,7 +1195,8 @@ async def validar_pago(request: Request, folio: str):
             .update({"estado_pago": "VALIDADO"}).eq("folio", folio).execute()
     except Exception as e:
         print(f"[VALIDAR] Error: {e}")
-    return RedirectResponse(url="/panel/folios", status_code=303)
+    from urllib.parse import quote
+    return RedirectResponse(url=f"/panel/folios?msg={quote(f'Folio {folio} validado ✅')}", status_code=303)
 
 @app.get("/panel/registro_admin", response_class=HTMLResponse)
 async def registro_admin_get(request: Request):
@@ -989,72 +1204,71 @@ async def registro_admin_get(request: Request):
         return RedirectResponse(url="/panel/login", status_code=303)
     tz  = ZoneInfo(TZ)
     hoy = datetime.now(tz).strftime("%Y-%m-%d")
-    return HTMLResponse(f"""<!DOCTYPE html><html lang="es"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Registrar Permiso — San Fernando</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Encode+Sans:wght@400;600;700&display=swap" rel="stylesheet">
-<style>
-body{{font-family:'Encode Sans',sans-serif;background:#f4f4f4;margin:0}}
-.top-bar{{background:#8b1f3a;color:white;padding:12px 20px;display:flex;align-items:center;justify-content:space-between}}
-.top-bar h1{{margin:0;font-size:17px;font-weight:700}}
-.top-bar a{{color:rgba(255,255,255,.8);text-decoration:none;font-size:13px}}
-.form-card{{background:white;border-radius:10px;padding:25px;margin:20px auto;max-width:560px;box-shadow:0 2px 8px rgba(0,0,0,.08)}}
-.btn-primary{{background:#8b1f3a;border-color:#8b1f3a}}
-.btn-primary:hover{{background:#700c26;border-color:#700c26}}
-</style></head><body>
-<div class="top-bar">
-  <h1>📝 Registrar Permiso (Admin)</h1>
-  <a href="/panel/admin">← Panel</a>
-</div>
-<div class="form-card">
-  <form method="POST" action="/panel/registro_admin">
-    <div class="mb-3">
-      <label class="form-label fw-semibold">Folio manual (opcional)</label>
-      <input type="text" name="folio" class="form-control" placeholder="Dejar vacío para auto-generar">
+    error = request.query_params.get("error", "")
+    err_html = f'<div class="alert-sf alert-err mb-3"><i class="fa-solid fa-triangle-exclamation me-2"></i>Error al registrar. Intenta de nuevo.</div>' if error else ""
+
+    contenido = f"""
+    <div class="row-titulo mb-3">
+      <h1 class="titulo-row" style="font-size:22px">Registrar Permiso</h1>
+      <div class="borde-hr"><hr></div>
     </div>
-    <div class="row g-3">
-      <div class="col-6">
-        <label class="form-label fw-semibold">Marca *</label>
-        <input type="text" name="marca" class="form-control" required>
-      </div>
-      <div class="col-6">
-        <label class="form-label fw-semibold">Línea/Modelo *</label>
-        <input type="text" name="linea" class="form-control" required>
-      </div>
-      <div class="col-4">
-        <label class="form-label fw-semibold">Año *</label>
-        <input type="text" name="anio" class="form-control" maxlength="4" required>
-      </div>
-      <div class="col-8">
-        <label class="form-label fw-semibold">Color</label>
-        <input type="text" name="color" class="form-control">
-      </div>
-      <div class="col-6">
-        <label class="form-label fw-semibold">Núm. de Serie *</label>
-        <input type="text" name="numero_serie" class="form-control" required>
-      </div>
-      <div class="col-6">
-        <label class="form-label fw-semibold">Núm. de Motor *</label>
-        <input type="text" name="numero_motor" class="form-control" required>
-      </div>
-      <div class="col-12">
-        <label class="form-label fw-semibold">Nombre del titular *</label>
-        <input type="text" name="nombre" class="form-control" required>
-      </div>
-      <div class="col-6">
-        <label class="form-label fw-semibold">Fecha expedición</label>
-        <input type="date" name="fecha_expedicion" class="form-control" value="{hoy}">
-      </div>
-      <div class="col-6">
-        <label class="form-label fw-semibold">Fecha vencimiento</label>
-        <input type="date" name="fecha_vencimiento" class="form-control">
-      </div>
-    </div>
-    <button type="submit" class="btn btn-primary w-100 mt-4 py-2 fw-bold">Generar Permiso</button>
-  </form>
-</div>
-</body></html>""")
+    {err_html}
+    <div class="form-card">
+      <form method="POST" action="/panel/registro_admin">
+        <div class="mb-3">
+          <label class="form-label">Folio manual <span style="color:#999;font-weight:400">(opcional — dejar vacío para auto-generar)</span></label>
+          <input type="text" name="folio" class="form-control" placeholder="Ej: 7801234">
+        </div>
+        <div class="row g-3">
+          <div class="col-sm-6">
+            <label class="form-label">Marca *</label>
+            <input type="text" name="marca" class="form-control" required>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Línea / Modelo *</label>
+            <input type="text" name="linea" class="form-control" required>
+          </div>
+          <div class="col-4">
+            <label class="form-label">Año *</label>
+            <input type="text" name="anio" class="form-control" maxlength="4" required>
+          </div>
+          <div class="col-8">
+            <label class="form-label">Color</label>
+            <input type="text" name="color" class="form-control">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Núm. de Serie *</label>
+            <input type="text" name="numero_serie" class="form-control" required>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Núm. de Motor *</label>
+            <input type="text" name="numero_motor" class="form-control" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Nombre del titular *</label>
+            <input type="text" name="nombre" class="form-control" required>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Fecha de expedición</label>
+            <input type="date" name="fecha_expedicion" class="form-control" value="{hoy}">
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Fecha de vencimiento <span style="color:#999;font-weight:400">(vacío = +30 días)</span></label>
+            <input type="date" name="fecha_vencimiento" class="form-control">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary w-100 mt-4 py-2 fw-bold">
+          <i class="fa-solid fa-file-circle-plus me-2"></i>Generar Permiso
+        </button>
+      </form>
+    </div>"""
+
+    return HTMLResponse(_base(
+        titulo="Registrar Permiso",
+        seccion="Registrar Permiso",
+        breadcrumb_extra='» <span>Registrar Permiso</span>',
+        contenido=contenido
+    ))
 
 @app.post("/panel/registro_admin")
 async def registro_admin_post(request: Request,
@@ -1073,32 +1287,29 @@ async def registro_admin_post(request: Request,
         fecha_ven      = datetime.fromisoformat(fecha_vencimiento).date() \
                          if fecha_vencimiento and fecha_vencimiento.strip() \
                          else fecha_exp + timedelta(days=30)
-
         datos_pdf = {
-            "folio":       folio_generado,
-            "marca":       marca.upper(), "linea":  linea.upper(), "anio": anio,
-            "serie":       numero_serie.upper(), "motor": numero_motor.upper(),
-            "color":       color.upper(), "nombre": nombre.upper(),
-            "fecha_exp":   fecha_exp.strftime("%d/%m/%Y"),
-            "fecha_ven":   fecha_ven.strftime("%d/%m/%Y"),
+            "folio": folio_generado,
+            "marca": marca.upper(), "linea": linea.upper(), "anio": anio,
+            "serie": numero_serie.upper(), "motor": numero_motor.upper(),
+            "color": color.upper(), "nombre": nombre.upper(),
+            "fecha_exp": fecha_exp.strftime("%d/%m/%Y"),
+            "fecha_ven": fecha_ven.strftime("%d/%m/%Y"),
             "fecha_exp_dt": datetime.combine(fecha_exp, datetime.min.time()).replace(tzinfo=tz),
             "fecha_ven_dt": datetime.combine(fecha_ven, datetime.min.time()).replace(tzinfo=tz),
         }
         generar_pdf(datos_pdf)
-
         supabase.table("folios_registrados").insert({
-            "folio":             folio_generado,
-            "marca":             marca.upper(), "linea": linea.upper(), "anio": anio,
-            "numero_serie":      numero_serie.upper(), "numero_motor": numero_motor.upper(),
-            "color":             color.upper(), "nombre": nombre.upper(),
-            "fecha_expedicion":  fecha_exp.isoformat(),
+            "folio": folio_generado,
+            "marca": marca.upper(), "linea": linea.upper(), "anio": anio,
+            "numero_serie": numero_serie.upper(), "numero_motor": numero_motor.upper(),
+            "color": color.upper(), "nombre": nombre.upper(),
+            "fecha_expedicion": fecha_exp.isoformat(),
             "fecha_vencimiento": fecha_ven.isoformat(),
-            "entidad":           ENTIDAD, "estado": "ACTIVO",
-            "estado_pago":       "VALIDADO",
-            "creado_por":        request.session.get("username", "admin")
+            "entidad": ENTIDAD, "estado": "ACTIVO", "estado_pago": "VALIDADO",
+            "creado_por": request.session.get("username", "admin")
         }).execute()
-
-        return RedirectResponse(url=f"/panel/folios?success=1", status_code=303)
+        from urllib.parse import quote
+        return RedirectResponse(url=f"/panel/folios?msg={quote(f'Permiso {folio_generado} generado ✅')}", status_code=303)
     except Exception as e:
         print(f"[REGISTRO ADMIN] Error: {e}")
         return RedirectResponse(url="/panel/registro_admin?error=1", status_code=303)
@@ -1119,61 +1330,60 @@ async def test_fechas_get(request: Request):
         except Exception as e:
             msg = f"Error: {e}"
 
+    msg_html = f'<div class="alert-sf alert-ok mb-3"><i class="fa-solid fa-circle-check me-2"></i>{msg}</div>' if msg else ""
+
     info_html = ""
+    acciones_html = ""
     if resultado:
         info_html = f"""
-        <div style="background:#f0f0f0;border-radius:8px;padding:14px;margin-bottom:15px;font-size:13px">
+        <div class="info-box">
           <strong>Folio:</strong> {resultado.get("folio","")}<br>
           <strong>Estado pago:</strong> {resultado.get("estado_pago","")}<br>
-          <strong>Expedición:</strong> {resultado.get("fecha_expedicion","")[:10]}<br>
-          <strong>Vencimiento:</strong> {resultado.get("fecha_vencimiento","")[:10]}<br>
-          <strong>user_id:</strong> {resultado.get("user_id","") or "ninguno (oficial)"}
-        </div>
+          <strong>Expedición:</strong> {str(resultado.get("fecha_expedicion",""))[:10]}<br>
+          <strong>Vencimiento:</strong> {str(resultado.get("fecha_vencimiento",""))[:10]}<br>
+          <strong>user_id:</strong> {resultado.get("user_id","") or "ninguno (folio oficial)"}<br>
+          <strong>Ver en público:</strong> <a href="/consulta/{resultado.get('folio','')}" target="_blank" style="color:#8b1f3a">
+            /consulta/{resultado.get('folio','')} →
+          </a>
+        </div>"""
+        acciones_html = f"""
         <form method="POST" action="/panel/test_fechas">
           <input type="hidden" name="folio" value="{resultado.get('folio','')}">
-          <button type="submit" name="accion" value="vencer_permiso"
-            style="width:100%;margin-bottom:8px;padding:10px;background:#b38b00;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer">
-            ⏰ Marcar VENCIDO (probar Renovar)
+          <button type="submit" name="accion" value="vencer_permiso" class="btn-vencer">
+            ⏰ Marcar VENCIDO — probar botón Renovar
           </button>
-          <button type="submit" name="accion" value="vencer_pago_48h"
-            style="width:100%;margin-bottom:8px;padding:10px;background:#8b1f3a;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer">
-            💀 Simular 48h sin pago (probar borrado)
+          <button type="submit" name="accion" value="vencer_pago_48h" class="btn-simular">
+            💀 Simular 48h sin pago — probar borrado auto
           </button>
-          <button type="submit" name="accion" value="restaurar"
-            style="width:100%;padding:10px;background:#1a6e2e;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer">
-            ✅ Restaurar vigencia normal
+          <button type="submit" name="accion" value="restaurar" class="btn-restaurar">
+            ✅ Restaurar vigencia normal (30 días)
           </button>
         </form>"""
 
-    msg_html = f'<div style="background:#d4edda;border:1px solid #c3e6cb;color:#155724;padding:10px;border-radius:6px;margin-bottom:12px;font-size:13px">{msg}</div>' if msg else ""
+    contenido = f"""
+    <div class="row-titulo mb-3">
+      <h1 class="titulo-row" style="font-size:22px">🧪 Test Fechas</h1>
+      <div class="borde-hr"><hr></div>
+    </div>
+    {msg_html}
+    <div class="form-card" style="max-width:500px">
+      <form method="GET">
+        <label class="form-label">Folio a probar</label>
+        <div class="d-flex gap-2 mb-3">
+          <input type="text" name="folio" class="form-control" placeholder="Ej: 7801234" value="{folio_buscar}">
+          <button type="submit" class="btn btn-primary px-4">Buscar</button>
+        </div>
+      </form>
+      {info_html}
+      {acciones_html}
+    </div>"""
 
-    return HTMLResponse(f"""<!DOCTYPE html><html lang="es"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Test Fechas — San Fernando</title>
-<style>
-body{{font-family:'Encode Sans',Arial,sans-serif;background:#f4f4f4;margin:0;padding:20px}}
-.top-bar{{background:#8b1f3a;color:white;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-radius:8px;margin-bottom:20px}}
-.top-bar h1{{margin:0;font-size:17px;font-weight:700;color:white}}
-.top-bar a{{color:rgba(255,255,255,.8);text-decoration:none;font-size:13px}}
-.card{{background:white;border-radius:10px;padding:20px;max-width:480px;margin:0 auto;box-shadow:0 2px 8px rgba(0,0,0,.08)}}
-input[type=text]{{width:100%;padding:10px;font-size:15px;box-sizing:border-box;border:1px solid #ccc;border-radius:6px;margin-bottom:10px}}
-.btn-buscar{{width:100%;padding:11px;background:#8b1f3a;color:white;border:none;border-radius:6px;font-weight:700;cursor:pointer;margin-bottom:15px;font-size:14px}}
-</style></head><body>
-<div style="max-width:480px;margin:0 auto">
-<div class="top-bar">
-  <h1>🧪 Test Fechas — San Fernando</h1>
-  <a href="/panel/admin">← Panel</a>
-</div>
-<div class="card">
-  {msg_html}
-  <form method="GET">
-    <input type="text" name="folio" placeholder="Folio (ej. 7801234)" value="{folio_buscar}">
-    <button type="submit" class="btn-buscar">🔍 Buscar folio</button>
-  </form>
-  {info_html}
-</div>
-</div>
-</body></html>""")
+    return HTMLResponse(_base(
+        titulo="Test Fechas",
+        seccion="Test Fechas",
+        breadcrumb_extra='» <span>Test Fechas</span>',
+        contenido=contenido
+    ))
 
 @app.post("/panel/test_fechas")
 async def test_fechas_post(request: Request,
@@ -1188,12 +1398,12 @@ async def test_fechas_post(request: Request,
             nueva_ven = (datetime.now(tz) - timedelta(days=1)).date().isoformat()
             supabase.table("folios_registrados") \
                 .update({"fecha_vencimiento": nueva_ven}).eq("folio", folio).execute()
-            msg = f"✅ Folio {folio} marcado VENCIDO. Pruébalo en /consulta/{folio}"
+            msg = f"Folio {folio} marcado VENCIDO. Pruébalo en /consulta/{folio}"
         elif accion == "vencer_pago_48h":
             nueva_exp = (datetime.now(tz) - timedelta(hours=49)).isoformat()
             supabase.table("folios_registrados") \
                 .update({"fecha_expedicion": nueva_exp}).eq("folio", folio).execute()
-            msg = f"✅ Folio {folio}: expedición movida 49h atrás. Si sigue PENDIENTE_PAGO, se borra en máx 15 min."
+            msg = f"Folio {folio}: expedición movida 49h atrás. Se borrará en máx 15 min si sigue PENDIENTE_PAGO."
         elif accion == "restaurar":
             hoy = datetime.now(tz)
             ven = hoy + timedelta(days=30)
@@ -1201,7 +1411,7 @@ async def test_fechas_post(request: Request,
                 "fecha_expedicion": hoy.date().isoformat(),
                 "fecha_vencimiento": ven.date().isoformat()
             }).eq("folio", folio).execute()
-            msg = f"✅ Folio {folio} restaurado a vigencia normal (30 días)."
+            msg = f"Folio {folio} restaurado a vigencia normal."
     except Exception as e:
         msg = f"Error: {e}"
 
@@ -1209,7 +1419,6 @@ async def test_fechas_post(request: Request,
     return RedirectResponse(
         url=f"/panel/test_fechas?folio={folio}&msg={quote(msg)}", status_code=303)
 
-# ===================== ROOT =====================
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return HTMLResponse(f"""<!DOCTYPE html><html><head>
