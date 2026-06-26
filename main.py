@@ -1417,6 +1417,90 @@ async def consulta_folio_resultado(request: Request, folio: str = Form(...)):
     folio = folio.strip().upper()
     return RedirectResponse(url=f"/consulta/{folio}", status_code=303)
 
+@app.get("/consulta/{folio}", response_class=HTMLResponse)
+async def consulta_publica(folio: str):
+    folio = folio.strip().upper()
+
+    try:
+        res = supabase.table("folios_registrados").select("*").eq("folio", folio).execute()
+
+        if not res.data:
+            return HTMLResponse(
+                _page(
+                    "Folio no encontrado",
+                    "Consulta de Folio",
+                    f"""
+                    <div class="form-card text-center">
+                        <h2 style="color:#8b1f3a;font-weight:700">Folio no encontrado</h2>
+                        <p>No se encontró información para el folio <strong>{folio}</strong>.</p>
+                        <a href="/consulta_folio" class="btn btn-primary mt-3">Consultar otro folio</a>
+                    </div>
+                    """
+                ),
+                status_code=404
+            )
+
+        f = res.data[0]
+
+        tz = ZoneInfo(TZ)
+        hoy = datetime.now(tz).date()
+
+        try:
+            fv = datetime.fromisoformat(str(f.get("fecha_vencimiento", ""))).date()
+            estado_vigencia = "VIGENTE" if hoy <= fv else "VENCIDO"
+        except Exception:
+            estado_vigencia = "ERROR"
+
+        color_estado = "#1a6e2e" if estado_vigencia == "VIGENTE" else "#8b1f3a"
+
+        contenido = f"""
+        <div class="row-titulo mb-3">
+            <h1 class="titulo-row" style="font-size:22px">Consulta de Permiso</h1>
+            <div class="borde-hr"><hr></div>
+        </div>
+
+        <div class="form-card">
+            <div class="text-center mb-3">
+                <div style="font-size:42px">🚦</div>
+                <h2 style="color:#8b1f3a;font-size:24px;font-weight:700;margin-bottom:5px">
+                    Folio {f.get("folio","")}
+                </h2>
+                <span style="display:inline-block;background:{color_estado};color:white;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700">
+                    {estado_vigencia}
+                </span>
+            </div>
+
+            <div style="font-size:14px;line-height:1.9">
+                <strong>Titular:</strong> {f.get("nombre","")}<br>
+                <strong>Vehículo:</strong> {f.get("marca","")} {f.get("linea","")} {f.get("anio","")}<br>
+                <strong>Color:</strong> {f.get("color","")}<br>
+                <strong>Número de serie:</strong> {f.get("numero_serie","")}<br>
+                <strong>Número de motor:</strong> {f.get("numero_motor","")}<br>
+                <strong>Fecha de expedición:</strong> {str(f.get("fecha_expedicion",""))[:10]}<br>
+                <strong>Fecha de vencimiento:</strong> {str(f.get("fecha_vencimiento",""))[:10]}<br>
+                <strong>Estado de pago:</strong> {f.get("estado_pago","")}<br>
+                <strong>Estado del permiso:</strong> {f.get("estado","")}
+            </div>
+        </div>
+        """
+
+        return HTMLResponse(_page("Consulta de Folio", "Consulta Pública", contenido))
+
+    except Exception as e:
+        return HTMLResponse(
+            _page(
+                "Error",
+                "Consulta de Folio",
+                f"""
+                <div class="form-card">
+                    <h2 style="color:#8b1f3a;font-weight:700">Error consultando folio</h2>
+                    <p>{e}</p>
+                </div>
+                """
+            ),
+            status_code=500
+        )
+
 # ===================== TEST FECHAS =====================
 @app.get("/panel/test_fechas", response_class=HTMLResponse)
 async def test_fechas_get(request: Request):
