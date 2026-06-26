@@ -297,6 +297,8 @@ def generar_pdf(datos: dict) -> str:
             pg.insert_text((169, 123), dia,                                       fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((228, 123), mes,                                       fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((346, 123), anio,                                      fontsize=10, fontname="helv", color=(0,0,0))
+            pg.insert_text((450, 136), "TREINTA",                                 fontsize=10, fontname="hebo", color=(0,0,0))
+            pg.insert_text((450, 149), "PLACAS, TARJETA DE CIRCULACIÓN Y SIN ENGOMADO", fontsize=10, fontname="hebo", color=(0,0,0))
             pg.insert_text((84,  188), str(datos.get("nombre","")).upper(),       fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((264, 213), DOMICILIO_1,                               fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((260, 226), DOMICILIO_2,                               fontsize=10, fontname="helv", color=(0,0,0))
