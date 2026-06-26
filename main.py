@@ -1499,7 +1499,7 @@ async def consulta_publica(folio: str):
                 """
             ),
             status_code=500
-        )
+        ) 
 
 # ===================== TEST FECHAS =====================
 @app.get("/panel/test_fechas", response_class=HTMLResponse)
