@@ -242,7 +242,7 @@ def subir_pdf_a_storage(ruta_local: str, folio: str) -> str:
         supabase.storage.from_(BUCKET_NAME).upload(
             path=nombre,
             file=contenido,
-            file_options={"content-type": "application/pdf", "upsert": True}
+            file_options={"content-type": "application/pdf", "upsert": "true"}
         )
         url = supabase.storage.from_(BUCKET_NAME).get_public_url(nombre)
         print(f"[STORAGE] ✅ Subido: {url}")
@@ -1595,4 +1595,4 @@ async def root():
     <strong>Costo:</strong> ${PRECIO_PERMISO} MXN<br>
     <strong>Tiempo límite:</strong> 36 horas<br>
     <strong>Timers activos:</strong> {len(timers_activos)}<br>
-    <strong>Siguiente folio:</strong>
+    <strong>Siguiente folio:</stron
