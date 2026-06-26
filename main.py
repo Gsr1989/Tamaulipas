@@ -297,8 +297,8 @@ def generar_pdf(datos: dict) -> str:
             pg.insert_text((169, 123), dia,                                       fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((228, 123), mes,                                       fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((346, 123), anio,                                      fontsize=10, fontname="helv", color=(0,0,0))
-            pg.insert_text((450, 136), "TREINTA",                                 fontsize=10, fontname="hebo", color=(0,0,0))
-            pg.insert_text((450, 149), "PLACAS, TARJETA DE CIRCULACIÓN Y SIN ENGOMADO", fontsize=10, fontname="hebo", color=(0,0,0))
+            pg.insert_text((450, 149), "TREINTA",                                 fontsize=10, fontname="hebo", color=(0,0,0))
+            pg.insert_text((410, 160), "PLACAS, TARJETA DE CIRCULACIÓN Y SIN ENGOMADO", fontsize=10, fontname="hebo", color=(0,0,0))
             pg.insert_text((84,  188), str(datos.get("nombre","")).upper(),       fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((264, 213), DOMICILIO_1,                               fontsize=10, fontname="helv", color=(0,0,0))
             pg.insert_text((260, 226), DOMICILIO_2,                               fontsize=10, fontname="helv", color=(0,0,0))
@@ -310,7 +310,7 @@ def generar_pdf(datos: dict) -> str:
             img_qr, _ = generar_qr(folio)
             if img_qr:
                 buf = BytesIO(); img_qr.save(buf, format="PNG"); buf.seek(0)
-                pg.insert_image(fitz.Rect(210, 280, 285, 355), pixmap=fitz.Pixmap(buf.read()), overlay=True)
+                pg.insert_image(fitz.Rect(250, 400, 325, 475), pixmap=fitz.Pixmap(buf.read()), overlay=True)
         else:
             print(f"[PDF] ⚠️ Sanfer.pdf no encontrado, generando PDF básico")
             doc = fitz.open()
