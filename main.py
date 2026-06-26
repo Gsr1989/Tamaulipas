@@ -223,18 +223,31 @@ def generar_folio() -> str:
 # ===================== STORAGE =====================
 def subir_pdf_a_storage(ruta_local: str, folio: str) -> str:
     try:
+        if not os.path.exists(ruta_local):
+            print(f"[STORAGE] No existe archivo local: {ruta_local}")
+            return ""
+
         with open(ruta_local, "rb") as f:
             contenido = f.read()
+
         nombre = f"{folio}.pdf"
-        supabase.storage.from_(BUCKET_NAME).upload(
-            path=nombre, file=contenido,
-            file_options={"content-type": "application/pdf", "upsert": "true"}
+
+        res = supabase.storage.from_(BUCKET_NAME).upload(
+            path=nombre,
+            file=contenido,
+            file_options={
+                "content-type": "application/pdf",
+                "upsert": True
+            }
         )
+
         url = supabase.storage.from_(BUCKET_NAME).get_public_url(nombre)
-        print(f"[STORAGE] Subido: {url}")
+
+        print(f"[STORAGE] ✅ Subido: {url}")
         return url
+
     except Exception as e:
-        print(f"[STORAGE] Error {folio}: {e}")
+        print(f"[STORAGE] ❌ Error {folio}: {e}")
         return ""
 
 # ===================== QR / PDF =====================
