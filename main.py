@@ -317,7 +317,7 @@ def generar_pdf(datos: dict) -> str:
             pg  = doc[0]
 
             # ── FOLIO en rojo, arriba a la derecha ──
-            pg.insert_text((500, 95), str(folio),
+            pg.insert_text((500, 97), str(folio),
                            fontsize=13, fontname="hebo", color=(0.8, 0, 0))
 
             # ── FECHA: CD. SAN FERNANDO, TAM. A ___ DE ___ DEL ___ ──
@@ -356,7 +356,7 @@ def generar_pdf(datos: dict) -> str:
                 img_qr.save(buf, format="PNG")
                 buf.seek(0)
                 pg.insert_image(
-                    fitz.Rect(360, 380, 460, 480),
+                    fitz.Rect(310, 380, 385, 455),
                     pixmap=fitz.Pixmap(buf.read()),
                     overlay=True
                 )
