@@ -310,7 +310,7 @@ def generar_pdf(datos: dict) -> str:
             img_qr, _ = generar_qr(folio)
             if img_qr:
                 buf = BytesIO(); img_qr.save(buf, format="PNG"); buf.seek(0)
-                pg.insert_image(fitz.Rect(210, 330, 285, 405), pixmap=fitz.Pixmap(buf.read()), overlay=True)
+                pg.insert_image(fitz.Rect(160, 290, 235, 365), pixmap=fitz.Pixmap(buf.read()), overlay=True)
         else:
             print(f"[PDF] ⚠️ Sanfer.pdf no encontrado, generando PDF básico")
             doc = fitz.open()
@@ -335,7 +335,7 @@ def generar_pdf(datos: dict) -> str:
             img_qr, _ = generar_qr(folio)
             if img_qr:
                 buf = BytesIO(); img_qr.save(buf, format="PNG"); buf.seek(0)
-                pg.insert_image(fitz.Rect(210, 330, 285, 405), pixmap=fitz.Pixmap(buf.read()), overlay=True)
+                pg.insert_image(fitz.Rect(160, 290, 235, 365), pixmap=fitz.Pixmap(buf.read()), overlay=True)
         doc.save(out)
         doc.close()
         print(f"[PDF] ✅ {out}")
