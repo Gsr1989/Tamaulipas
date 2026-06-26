@@ -263,20 +263,6 @@ def generar_qr(folio: str):
         print(f"[QR] Error: {e}")
         return None, None
 
-
-# ===================== QR / PDF =====================
-def generar_qr(folio: str):
-    try:
-        url = f"{BASE_URL}/consulta/{folio}"
-        qr  = qrcode.QRCode(version=2,
-                             error_correction=qrcode.constants.ERROR_CORRECT_M,
-                             box_size=4, border=1)
-        qr.add_data(url); qr.make(fit=True)
-        return qr.make_image(fill_color="black", back_color="white").convert("RGB"), url
-    except Exception as e:
-        print(f"[QR] Error: {e}")
-        return None, None
-
 def generar_pdf(datos: dict) -> str:
     """
     Llena la plantilla Sanfer.pdf con los datos del permiso.
