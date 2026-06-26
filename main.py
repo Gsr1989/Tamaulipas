@@ -1595,4 +1595,21 @@ async def root():
     <strong>Costo:</strong> ${'$'}{PRECIO_PERMISO} MXN<br>
     <strong>Tiempo límite:</strong> 36 horas<br>
     <strong>Timers activos:</strong> {len(timers_activos)}<br>
-    <strong>Siguiente folio:</
+    <strong>Siguiente folio:</strong> {FOLIO_NUM_PREF}{_folio_counter['siguiente']}
+  </div>
+  <a href="/panel/login" class="btn-p">→ Panel de Administración</a>
+</div>
+</body></html>""")
+
+@app.get("/health")
+async def health():
+    return {"status":"healthy","version":"1.0","entidad":"San Fernando, Tamaulipas",
+            "timestamp":datetime.now(ZoneInfo(TZ)).isoformat(),
+            "timers_activos":len(timers_activos),
+            "siguiente_folio":f"{FOLIO_NUM_PREF}{_folio_counter['siguiente']}"}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", 8000))
+    print(f"[SISTEMA] San Fernando v1.0 iniciando en puerto {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port)
