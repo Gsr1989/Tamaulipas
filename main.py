@@ -1566,6 +1566,23 @@ async def callback_validar(callback: CallbackQuery):
         await callback.answer("❌ Folio no encontrado en timers activos", show_alert=True)
 
 @dp.callback_query(lambda c: c.data and c.data.startswith("detener_"))
+async def callback_detener_btn(callback: CallbackQuery):
+    folio = callback.data.replace("detener_", "")
+    if folio in timers_activos:
+        nombre = timers_activos[folio].get("nombre", "")
+        cancelar_timer_folio(folio)
+        with suppress(Exception):
+            await asyncio.to_thread(lambda: supabase.table("folios_registrados").update({
+                "estado": "TIMER_DETENIDO"
+            }).eq("folio", folio).execute())
+        await callback.answer("⏹️ Timer detenido", show_alert=True)
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer(
+            f"⏹️ TIMER DETENIDO\nFolio: {folio}\nTitular: {nombre}\n\n"
+            f"El folio ya NO se eliminará automáticamente.\n\n📋 Use /banamex para otro permiso.")
+    else:
+        await callback.answer("❌ Timer ya no está activo", show_alert=True)
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return HTMLResponse(f"""<!DOCTYPE html><html><head>
